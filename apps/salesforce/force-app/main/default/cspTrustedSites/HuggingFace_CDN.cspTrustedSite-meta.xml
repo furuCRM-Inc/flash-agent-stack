@@ -3,7 +3,5 @@
     <description>Allow Transformers.js to fetch NLI model weights from HuggingFace CDN (Edge inference mode)</description>
     <endpointUrl>https://huggingface.co</endpointUrl>
     <isActive>true</isActive>
-    <isApplicableToSite>true</isApplicableToSite>
-    <isApplicableToComponents>true</isApplicableToComponents>
     <context>All</context>
 </CspTrustedSite>

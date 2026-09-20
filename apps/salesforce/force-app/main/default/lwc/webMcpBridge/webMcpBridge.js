@@ -6,12 +6,10 @@ import generateResolution from '@salesforce/apex/JevReflexController.generateRes
  * via the document.modelContext protocol.
  *
  * Usage: include <c-web-mcp-bridge> inside your LWC template.
- * The parent component can then call tools via document.modelContext.callTool().
+ * Listen for 'toolregistered' events on the parent to track registration.
+ * The parent calls bridge.callTool() via the @api method.
  */
 export default class WebMcpBridge extends LightningElement {
-
-    /** Fires after each tool registration so the parent can update UI */
-    @api onToolRegistered;
 
     _registeredTools = [];
 
