@@ -1,4 +1,4 @@
-import { LightningElement, track } from 'lwc';
+import { LightningElement, api, track } from 'lwc';
 import WORKER_URL    from '@salesforce/resourceUrl/flashAgentWorker';
 import evaluate      from '@salesforce/apex/JevReflexController.evaluate';
 import generateResolution from '@salesforce/apex/JevReflexController.generateResolution';
@@ -326,6 +326,7 @@ export default class FlashAgentDemo extends LightningElement {
 
     // ── Helpers ────────────────────────────────────────────────────────────────
 
+    @api
     resetDemo() {
         this._cancelled = true;
         this._timers.forEach(t => clearTimeout(t));
