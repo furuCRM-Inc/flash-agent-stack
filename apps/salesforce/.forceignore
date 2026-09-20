@@ -1,0 +1,7 @@
+# Jest test files — local only, never deployed to org
+**/__tests__/**
+**/jest-mocks/**
+
+# Node modules
+node_modules/
+coverage/
