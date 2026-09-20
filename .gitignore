@@ -16,3 +16,4 @@ apps/extension/dist/
 # OS
 .DS_Store
 Thumbs.db
+apps/backend/.wrangler/

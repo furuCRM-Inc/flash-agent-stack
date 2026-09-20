@@ -16,5 +16,4 @@ binding = "AI"
 # pattern = "flash-agent.your-domain.com/*"
 # zone_name = "your-domain.com"
 
-[build]
-command = "npm run build:cf"
+# wrangler compiles TypeScript natively — no separate build step needed
