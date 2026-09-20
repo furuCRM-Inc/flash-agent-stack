@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.cache/
+*.local
+.env
+.env.*
+!.env.example
+# Transformers.js model cache
+.cache/
+models/
+*.onnx
+# Bun
+bun.lockb
+# Extension build
+apps/extension/dist/
+# OS
+.DS_Store
+Thumbs.db

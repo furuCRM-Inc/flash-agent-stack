@@ -1,0 +1,18 @@
+{
+  "name": "flash-agent-stack",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/backend",
+    "apps/extension"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/backend",
+    "build": "npm run build --workspace=apps/backend && npm run build --workspace=apps/extension",
+    "start": "npm run start --workspace=apps/backend",
+    "test": "npm run test --workspace=apps/backend"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

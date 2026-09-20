@@ -1,0 +1,21 @@
+{
+  "name": "@flash-agent/backend",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "start:node": "node --experimental-specifier-resolution=node dist/index.js",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.0.0",
+    "hono": "^4.6.0"
+  },
+  "devDependencies": {
+    "@hono/node-server": "^1.13.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

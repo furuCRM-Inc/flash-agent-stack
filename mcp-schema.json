@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FlashAgent SystemOne Request",
+  "description": "Jev-compatible /v1/systemone endpoint schema",
+  "type": "object",
+  "required": ["model", "state", "questions"],
+  "properties": {
+    "model": {
+      "type": "string",
+      "description": "Model identifier (use 'flash-local' or 'jev-latest' for drop-in compat)",
+      "examples": ["flash-local", "jev-latest"]
+    },
+    "state": {
+      "type": "string",
+      "description": "JSON-stringified context object to evaluate questions against"
+    },
+    "questions": {
+      "type": "object",
+      "description": "Map of question_key → question definition",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "title": "Noul question",
+            "type": "object",
+            "required": ["type", "instructions"],
+            "properties": {
+              "type": { "type": "string", "enum": ["noul"] },
+              "instructions": { "type": "string" }
+            }
+          },
+          {
+            "title": "Choice question",
+            "type": "object",
+            "required": ["type", "instructions", "criteria"],
+            "properties": {
+              "type": { "type": "string", "enum": ["choice"] },
+              "instructions": { "type": "string" },
+              "criteria": {
+                "type": "object",
+                "description": "Map of choice_key → description string",
+                "additionalProperties": { "type": "string" }
+              }
+            }
+          },
+          {
+            "title": "Score question",
+            "type": "object",
+            "required": ["type", "instructions", "levels"],
+            "properties": {
+              "type": { "type": "string", "enum": ["score"] },
+              "instructions": { "type": "string" },
+              "levels": {
+                "type": "object",
+                "description": "Map of level_index (as string) → description",
+                "additionalProperties": { "type": "string" }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
