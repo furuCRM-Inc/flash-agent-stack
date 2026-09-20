@@ -216,4 +216,117 @@ app.post('/v1/systemone', async (c) => {
   return c.json(response);
 });
 
+// ── /v1/agent-action — furuAgent Bar intent routing ──────────────────────────
+
+interface AgentActionRequest {
+  user_input:   string;
+  sObjectType?: string;
+  recordId?:    string;
+  pageType?:    string;
+  field_schema?: string[];  // ["Label=ApiName", ...] from Apex schema describe
+}
+
+interface AgentActionResponse {
+  intent:           string;   // NAVIGATE | UPDATE_RECORD | PREFILL | SEARCH | UNKNOWN
+  message:          string;
+  sObjectType?:     string;
+  recordId?:        string;
+  fields?:          Record<string, unknown>;
+  should_save?:     boolean;
+  target_record_id?: string;
+  target_sobject?:  string;
+  target_url?:      string;
+  search_name?:     string;
+  search_query?:    string;
+  search_sobject?:  string;
+  search_fields?:   string[];
+}
+
+function buildAgentSystemPrompt(): string {
+  return `You are a Salesforce AI assistant that converts natural language user input into structured JSON actions.
+
+Intents:
+- NAVIGATE: user wants to go to a record or list (e.g. "go to", "open", "show me")
+- UPDATE_RECORD: user wants to save field changes (e.g. "update", "set", "change", "save")
+- PREFILL: user wants to pre-fill fields without saving (e.g. "fill in", "put", "pre-fill")
+- SEARCH: user wants to find records (e.g. "find", "search", "look for", "list")
+- UNKNOWN: cannot determine intent
+
+Return ONLY valid JSON matching this schema (no markdown, no extra text):
+{
+  "intent": "<NAVIGATE|UPDATE_RECORD|PREFILL|SEARCH|UNKNOWN>",
+  "message": "<brief human-readable summary of what you will do>",
+  "sObjectType": "<API name of target sObject, or null>",
+  "recordId": "<record ID to update, or null>",
+  "fields": { "<FieldApiName>": <value>, ... },
+  "should_save": <true|false>,
+  "target_record_id": "<record ID to navigate to, or null>",
+  "target_sobject": "<sObject API name for list navigation, or null>",
+  "search_name": "<name/keyword to search for, or null>",
+  "search_query": "<SOSL search term, or null>",
+  "search_sobject": "<sObject to search in, or null>"
+}
+
+Important rules:
+- Use exact Salesforce API field names from the field_schema provided (format: "Label=ApiName")
+- Convert picklist values to their API values (e.g. "Closed Won" stays "Closed Won" for StageName)
+- Numbers should be numbers (not strings): Amount: 500000 not "500000"
+- Dates in YYYY-MM-DD format
+- For NAVIGATE without a recordId, set search_name to the record name so Apex can look it up`;
+}
+
+function buildAgentUserPrompt(req: AgentActionRequest): string {
+  const schema = (req.field_schema ?? []).slice(0, 80).join(', ');
+  return `Current page context:
+- sObject: ${req.sObjectType || 'unknown'}
+- recordId: ${req.recordId || 'none'}
+- pageType: ${req.pageType || 'other'}
+${schema ? `\nAvailable fields (Label=ApiName):\n${schema}` : ''}
+
+User request: "${req.user_input}"
+
+Return the JSON action now:`;
+}
+
+async function runAgentLLM(c: Parameters<typeof app.post>[1] & { env: Env }, prompt: string, system: string): Promise<Record<string, unknown>> {
+  const raw = await c.env.AI.run(MODEL, {
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user',   content: prompt },
+    ],
+    max_tokens: 512,
+    temperature: 0.1,
+  });
+
+  const out = raw as { response?: unknown; choices?: Array<{ message?: { content?: string } }> };
+  if (out.response && typeof out.response === 'object') return out.response as Record<string, unknown>;
+  const text = out.choices?.[0]?.message?.content ?? (typeof out.response === 'string' ? out.response : '{}');
+  return extractJson(text as string);
+}
+
+app.post('/v1/agent-action', async (c) => {
+  let body: AgentActionRequest;
+  try { body = await c.req.json<AgentActionRequest>(); }
+  catch { return c.json({ error: 'Invalid JSON body' }, 400); }
+
+  if (!body.user_input?.trim()) return c.json({ error: 'user_input is required' }, 400);
+
+  try {
+    const result = await runAgentLLM(
+      c as Parameters<typeof app.post>[1] & { env: Env },
+      buildAgentUserPrompt(body),
+      buildAgentSystemPrompt()
+    ) as AgentActionResponse;
+
+    // Ensure required fields have defaults
+    result.intent  ??= 'UNKNOWN';
+    result.message ??= 'Action processed.';
+    result.fields  ??= {};
+
+    return c.json(result);
+  } catch (e) {
+    return c.json({ error: 'Agent action failed', detail: String(e), intent: 'UNKNOWN', message: 'Backend error — please retry.' }, 500);
+  }
+});
+
 export default app;
