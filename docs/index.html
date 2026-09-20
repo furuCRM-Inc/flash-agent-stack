@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⚡ FlashAgent Stack — System 1 AI for Salesforce</title>
+<meta name="description" content="Local open-source Jev drop-in + Universal WebMCP. 10ms AI decisions on Salesforce Sites. Zero infrastructure cost.">
+<style>
+  /* ── Reset & Variables ─────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #050709;
+    --surface: #0d1117;
+    --s2:      #161b22;
+    --border:  #21262d;
+    --electric:#00d4ff;
+    --purple:  #7c3aed;
+    --green:   #3fb950;
+    --red:     #ff3864;
+    --amber:   #e3b341;
+    --text:    #e6edf3;
+    --dim:     #8b949e;
+    --json:    #f0883e;
+    --mono: 'SF Mono','Fira Code','Cascadia Code','Courier New',monospace;
+    --sans: -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── Nav ─────────────────────────────────────────────────────── */
+  nav {
+    position: sticky;
+    top: 0;
+    background: rgba(5,7,9,0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    z-index: 100;
+    padding: 0 32px;
+    display: flex;
+    align-items: center;
+    height: 56px;
+    gap: 32px;
+  }
+
+  .nav-logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--electric); letter-spacing: -0.3px; text-decoration: none; }
+  .nav-links { display: flex; gap: 24px; margin-left: auto; }
+  .nav-links a { color: var(--dim); text-decoration: none; font-size: 14px; transition: color 0.2s; }
+  .nav-links a:hover { color: var(--text); }
+  .nav-badge {
+    background: linear-gradient(135deg, var(--electric), var(--purple));
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    border-radius: 6px;
+    padding: 5px 14px;
+    text-decoration: none;
+    transition: opacity 0.2s;
+  }
+  .nav-badge:hover { opacity: 0.85; }
+
+  /* ── Container ───────────────────────────────────────────────── */
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 32px; }
+
+  /* ── Hero ────────────────────────────────────────────────────── */
+  .hero {
+    text-align: center;
+    padding: 100px 32px 80px;
+  }
+
+  .hero-bolt { font-size: 72px; display: block; animation: pulse-bolt 1.8s ease-in-out infinite; }
+  @keyframes pulse-bolt {
+    0%,100% { transform: scale(1); opacity: 1; }
+    50%      { transform: scale(1.15); opacity: 0.85; }
+  }
+
+  .hero h1 {
+    font-size: clamp(36px, 6vw, 64px);
+    font-weight: 800;
+    letter-spacing: -1.5px;
+    margin: 16px 0 12px;
+    background: linear-gradient(135deg, var(--electric) 0%, var(--purple) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero-sub {
+    font-size: clamp(16px, 2.5vw, 20px);
+    color: var(--dim);
+    max-width: 600px;
+    margin: 0 auto 40px;
+  }
+
+  .hero-badges {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 40px;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 20px;
+    padding: 5px 14px;
+    border: 1px solid transparent;
+    letter-spacing: 0.4px;
+  }
+
+  .badge--electric { background: rgba(0,212,255,0.1);   color: var(--electric); border-color: rgba(0,212,255,0.3); }
+  .badge--purple   { background: rgba(124,58,237,0.1);  color: var(--purple);   border-color: rgba(124,58,237,0.3); }
+  .badge--green    { background: rgba(63,185,80,0.1);   color: var(--green);    border-color: rgba(63,185,80,0.3); }
+  .badge--amber    { background: rgba(227,179,65,0.1);  color: var(--amber);    border-color: rgba(227,179,65,0.3); }
+
+  .hero-cta {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--electric), var(--purple));
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 14px 32px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    text-decoration: none;
+    transition: opacity 0.2s, transform 0.1s;
+    display: inline-block;
+  }
+  .btn-primary:hover { opacity: 0.88; transform: translateY(-1px); }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 32px;
+    font-size: 15px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: border-color 0.2s;
+    display: inline-block;
+  }
+  .btn-secondary:hover { border-color: var(--dim); }
+
+  /* ── Stats row ───────────────────────────────────────────────── */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    margin: 0 0 80px;
+  }
+
+  .stat {
+    background: var(--surface);
+    padding: 28px 24px;
+    text-align: center;
+  }
+
+  .stat-num { font-size: 36px; font-weight: 800; font-family: var(--mono); }
+  .stat-num--electric { color: var(--electric); }
+  .stat-num--green    { color: var(--green); }
+  .stat-num--purple   { color: var(--purple); }
+  .stat-num--amber    { color: var(--amber); }
+  .stat-lbl { font-size: 12px; color: var(--dim); margin-top: 4px; }
+
+  /* ── Section ─────────────────────────────────────────────────── */
+  section { margin-bottom: 80px; }
+
+  .section-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--electric);
+    margin-bottom: 12px;
+  }
+
+  h2 {
+    font-size: clamp(26px, 4vw, 36px);
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    margin-bottom: 16px;
+  }
+
+  .section-desc { font-size: 17px; color: var(--dim); max-width: 640px; margin-bottom: 40px; }
+
+  /* ── Cards ───────────────────────────────────────────────────── */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 16px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    transition: border-color 0.2s;
+  }
+  .card:hover { border-color: rgba(0,212,255,0.4); }
+
+  .card-icon { font-size: 28px; margin-bottom: 14px; }
+  .card h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+  .card p  { font-size: 14px; color: var(--dim); line-height: 1.65; }
+
+  /* ── Code block ──────────────────────────────────────────────── */
+  .code-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+
+  .code-bar {
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--s2);
+    gap: 8px;
+  }
+
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-dot--red   { background: #ff5f57; }
+  .code-dot--amber { background: #ffbd2e; }
+  .code-dot--green { background: #28c940; }
+
+  .code-title { font-family: var(--mono); font-size: 12px; color: var(--dim); margin-left: 6px; }
+
+  .code-copy {
+    margin-left: auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--dim);
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-family: var(--mono);
+    transition: color 0.2s;
+  }
+  .code-copy:hover { color: var(--text); }
+
+  pre {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text);
+    padding: 20px;
+    overflow-x: auto;
+    line-height: 1.7;
+  }
+
+  .k  { color: #ff7b72; }   /* keywords */
+  .s  { color: #a5d6ff; }   /* strings */
+  .c  { color: var(--dim); } /* comments */
+  .n  { color: var(--json); } /* numbers */
+  .p  { color: var(--purple); } /* properties/keys */
+  .e  { color: var(--electric); } /* electric highlight */
+  .g  { color: var(--green); }   /* green */
+
+  /* ── Interactive demo ────────────────────────────────────────── */
+  .demo-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  .demo-header {
+    background: var(--s2);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .demo-header-title { font-family: var(--mono); font-size: 13px; color: var(--dim); }
+
+  .demo-body { padding: 24px; }
+
+  .demo-textarea {
+    width: 100%;
+    background: rgba(0,0,0,0.4);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text);
+    resize: vertical;
+    min-height: 100px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .demo-textarea:focus { border-color: rgba(0,212,255,0.5); }
+
+  .demo-actions { display: flex; gap: 10px; margin-top: 12px; align-items: center; }
+
+  .demo-run {
+    background: linear-gradient(135deg, var(--electric), var(--purple));
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 24px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    transition: opacity 0.2s;
+  }
+  .demo-run:hover { opacity: 0.88; }
+  .demo-run:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .demo-status { font-size: 12px; color: var(--dim); font-family: var(--mono); }
+
+  .demo-result {
+    margin-top: 16px;
+    background: rgba(240,136,62,0.06);
+    border: 1px solid rgba(240,136,62,0.25);
+    border-radius: 8px;
+    padding: 16px;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--json);
+    white-space: pre-wrap;
+    word-break: break-all;
+    min-height: 60px;
+    display: none;
+    animation: fade-in 0.3s ease;
+  }
+  .demo-result.visible { display: block; }
+
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Comparison table ────────────────────────────────────────── */
+  .table-wrap { overflow-x: auto; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+
+  th {
+    background: var(--s2);
+    border: 1px solid var(--border);
+    padding: 12px 16px;
+    text-align: left;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--dim);
+    font-weight: 600;
+  }
+
+  td {
+    border: 1px solid var(--border);
+    padding: 12px 16px;
+    color: var(--text);
+    vertical-align: top;
+  }
+
+  tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+
+  .td-check { color: var(--green); font-weight: 700; }
+  .td-cross { color: var(--dim); }
+
+  /* ── Pricing ─────────────────────────────────────────────────── */
+  .pricing-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  .pricing-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px;
+  }
+
+  .pricing-card--pro {
+    border-color: rgba(124,58,237,0.5);
+    background: rgba(124,58,237,0.05);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .pricing-card--pro::before {
+    content: 'ENTERPRISE';
+    position: absolute;
+    top: 14px;
+    right: -26px;
+    background: var(--purple);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 4px 36px;
+    transform: rotate(35deg);
+  }
+
+  .pricing-title { font-size: 13px; color: var(--dim); font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+  .pricing-price { font-size: 40px; font-weight: 800; font-family: var(--mono); color: var(--text); margin-bottom: 4px; }
+  .pricing-period { font-size: 13px; color: var(--dim); margin-bottom: 24px; }
+  .pricing-features { list-style: none; display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }
+  .pricing-features li { font-size: 14px; display: flex; gap: 8px; }
+  .pricing-features li::before { content: '✓'; color: var(--green); font-weight: 700; flex-shrink: 0; }
+  .pricing-features li.dim::before { content: '—'; color: var(--dim); }
+  .pricing-features li.dim { color: var(--dim); }
+
+  .pricing-cta {
+    display: block;
+    text-align: center;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    text-decoration: none;
+    transition: opacity 0.2s;
+  }
+
+  .pricing-cta--free { background: var(--s2); color: var(--text); border: 1px solid var(--border); }
+  .pricing-cta--pro  { background: linear-gradient(135deg, var(--purple), #a855f7); color: #fff; }
+  .pricing-cta:hover { opacity: 0.85; }
+
+  /* ── Deploy steps ────────────────────────────────────────────── */
+  .steps { display: flex; flex-direction: column; gap: 16px; }
+
+  .step {
+    display: flex;
+    gap: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+    transition: border-color 0.2s;
+  }
+  .step:hover { border-color: rgba(0,212,255,0.3); }
+
+  .step-num {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--electric), var(--purple));
+    color: #fff;
+    font-size: 12px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .step-content h4 { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+  .step-content p  { font-size: 13px; color: var(--dim); line-height: 1.6; }
+  .step-content code {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--s2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 6px;
+    color: var(--electric);
+  }
+
+  /* ── Footer ──────────────────────────────────────────────────── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 40px 32px;
+    margin-top: 80px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .footer-left { font-size: 13px; color: var(--dim); }
+  .footer-left a { color: var(--electric); text-decoration: none; }
+
+  .footer-links { display: flex; gap: 20px; }
+  .footer-links a { font-size: 13px; color: var(--dim); text-decoration: none; transition: color 0.2s; }
+  .footer-links a:hover { color: var(--text); }
+
+  /* ── Responsive ──────────────────────────────────────────────── */
+  @media (max-width: 768px) {
+    nav { padding: 0 16px; }
+    .nav-links { display: none; }
+    .container { padding: 0 16px; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .pricing-grid { grid-template-columns: 1fr; }
+    footer { flex-direction: column; }
+    .hero { padding: 60px 16px 50px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Navigation ──────────────────────────────────────────────── -->
+<nav>
+  <a class="nav-logo" href="#">⚡ FlashAgent</a>
+  <div class="nav-links">
+    <a href="#how-it-works">How it works</a>
+    <a href="#deploy">Deploy</a>
+    <a href="#salesforce">Salesforce</a>
+    <a href="#pricing">Pricing</a>
+    <a href="https://github.com/furuCRM-Inc/flash-agent-stack" target="_blank">GitHub</a>
+  </div>
+  <a class="nav-badge" href="https://github.com/furuCRM-Inc/flash-agent-stack" target="_blank">⭐ Star on GitHub</a>
+</nav>
+
+<!-- ── Hero ────────────────────────────────────────────────────── -->
+<div class="hero">
+  <span class="hero-bolt">⚡</span>
+  <h1>System 1 AI for Salesforce</h1>
+  <p class="hero-sub">
+    Open-source Jev drop-in. 10ms decisions. Zero infrastructure cost.
+    Runs in your browser, on Cloudflare Workers, or directly on Salesforce Sites.
+  </p>
+  <div class="hero-badges">
+    <span class="badge badge--electric">🟢 In-browser · 10ms</span>
+    <span class="badge badge--purple">☁️ Cloudflare Workers · FREE</span>
+    <span class="badge badge--green">🏗️ Salesforce Sites Ready</span>
+    <span class="badge badge--amber">📄 MIT License</span>
+  </div>
+  <div class="hero-cta">
+    <a class="btn-primary" href="https://github.com/furuCRM-Inc/flash-agent-stack" target="_blank">View on GitHub →</a>
+    <a class="btn-secondary" href="#deploy">Deploy in 30s</a>
+  </div>
+</div>
+
+<!-- ── Stats ────────────────────────────────────────────────────── -->
+<div class="container">
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-num stat-num--electric">10ms</div>
+      <div class="stat-lbl">Warm inference (in-browser NLI)</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num stat-num--green">$0</div>
+      <div class="stat-lbl">Infrastructure cost (Community)</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num stat-num--purple">0</div>
+      <div class="stat-lbl">Output tokens — no text generated</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num stat-num--amber">100%</div>
+      <div class="stat-lbl">Open-source (MIT)</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── How it works ─────────────────────────────────────────────── -->
+<section id="how-it-works">
+  <div class="container">
+    <div class="section-label">How it works</div>
+    <h2>Three question types. One API call. Zero hallucination.</h2>
+    <p class="section-desc">
+      Instead of asking an LLM to write an answer, FlashAgent evaluates typed questions against a state object and returns calibrated probabilities — in milliseconds.
+    </p>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-icon">🎯</div>
+        <h3>Noul — Binary probability</h3>
+        <p>Is this a critical VIP churn risk? <br>Returns a calibrated probability <code style="font-family:monospace;font-size:12px;background:var(--s2);padding:2px 6px;border-radius:3px;">0.0 → 1.0</code>. No text. No hallucination.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔀</div>
+        <h3>Choice — Routing decision</h3>
+        <p>APPROVE_REFUND · ESCALATE · STANDARD? <br>Returns the winning option with confidence score and full probability distribution.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📊</div>
+        <h3>Score — Urgency rating</h3>
+        <p>Urgency from 0 to 3? <br>Returns a weighted score across ordered levels — perfect for priority queues and SLA routing.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Live Demo ─────────────────────────────────────────────────── -->
+<section id="demo">
+  <div class="container">
+    <div class="section-label">Interactive Demo</div>
+    <h2>Try it — edit the message and run</h2>
+    <p class="section-desc">This demo calls your local FlashAgent backend (or falls back to simulated output). No API key required.</p>
+
+    <div class="demo-box">
+      <div class="demo-header">
+        <span class="code-dot code-dot--red"></span>
+        <span class="code-dot code-dot--amber"></span>
+        <span class="code-dot code-dot--green"></span>
+        <span class="demo-header-title">POST /v1/systemone</span>
+      </div>
+      <div class="demo-body">
+        <label style="font-size:12px;color:var(--dim);display:block;margin-bottom:6px;">Customer message</label>
+        <textarea class="demo-textarea" id="demoInput" rows="3">System down. Lost $50,000. Cancel my subscription and refund me NOW!</textarea>
+        <div class="demo-actions">
+          <button class="demo-run" id="demoBtn" onclick="runDemo()">⚡ Run FlashAgent</button>
+          <span class="demo-status" id="demoStatus"></span>
+        </div>
+        <div class="demo-result" id="demoResult"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Request/Response ──────────────────────────────────────────── -->
+<section id="api">
+  <div class="container">
+    <div class="section-label">API Reference</div>
+    <h2>Jev-compatible. Drop in without changing your code.</h2>
+    <p class="section-desc">The request and response format is identical to TypeSafe AI Jev. Swap the endpoint — everything else stays the same.</p>
+
+    <div class="code-wrap">
+      <div class="code-bar">
+        <span class="code-dot code-dot--red"></span>
+        <span class="code-dot code-dot--amber"></span>
+        <span class="code-dot code-dot--green"></span>
+        <span class="code-title">Request — POST /v1/systemone</span>
+        <button class="code-copy" onclick="copyCode('req')">copy</button>
+      </div>
+      <pre id="req"><span class="k">{</span>
+  <span class="p">"model"</span>: <span class="s">"flash-local"</span>,
+  <span class="p">"state"</span>: <span class="s">"{\"message\": \"System down. Lost $50,000. Cancel NOW!\", \"tier\": \"Enterprise\"}"</span>,
+  <span class="p">"questions"</span>: <span class="k">{</span>
+    <span class="p">"is_critical"</span>: <span class="k">{</span>
+      <span class="p">"type"</span>: <span class="s">"noul"</span>,
+      <span class="p">"instructions"</span>: <span class="s">"Does this require immediate VIP retention intervention?"</span>
+    <span class="k">}</span>,
+    <span class="p">"recommended_action"</span>: <span class="k">{</span>
+      <span class="p">"type"</span>: <span class="s">"choice"</span>,
+      <span class="p">"instructions"</span>: <span class="s">"Select the most appropriate retention action."</span>,
+      <span class="p">"criteria"</span>: <span class="k">{</span>
+        <span class="p">"APPROVE_MAX_REFUND"</span>: <span class="s">"Approve full refund immediately"</span>,
+        <span class="p">"ESCALATE"</span>:           <span class="s">"Escalate to senior support team"</span>,
+        <span class="p">"STANDARD_RESPONSE"</span>:  <span class="s">"Route to standard support queue"</span>
+      <span class="k">}</span>
+    <span class="k">}</span>,
+    <span class="p">"urgency_level"</span>: <span class="k">{</span>
+      <span class="p">"type"</span>: <span class="s">"score"</span>,
+      <span class="p">"instructions"</span>: <span class="s">"Rate the urgency of this situation."</span>,
+      <span class="p">"levels"</span>: <span class="k">{</span>
+        <span class="p">"0"</span>: <span class="s">"Low: No immediate churn risk"</span>,
+        <span class="p">"1"</span>: <span class="s">"Medium: Same-day response"</span>,
+        <span class="p">"2"</span>: <span class="s">"High: Priority within the hour"</span>,
+        <span class="p">"3"</span>: <span class="s">"Critical: High-value customer threatening cancellation"</span>
+      <span class="k">}</span>
+    <span class="k">}</span>
+  <span class="k">}</span>
+<span class="k">}</span></pre>
+    </div>
+
+    <div class="code-wrap">
+      <div class="code-bar">
+        <span class="code-dot code-dot--red"></span>
+        <span class="code-dot code-dot--amber"></span>
+        <span class="code-dot code-dot--green"></span>
+        <span class="code-title">Response — 200 OK</span>
+        <button class="code-copy" onclick="copyCode('res')">copy</button>
+      </div>
+      <pre id="res"><span class="k">{</span>
+  <span class="p">"model"</span>: <span class="s">"flash-local"</span>,
+  <span class="p">"answers"</span>: <span class="k">{</span>
+    <span class="p">"is_critical"</span>:        <span class="k">{</span> <span class="p">"type"</span>: <span class="s">"noul"</span>,   <span class="p">"noul"</span>: <span class="n">0.89</span> <span class="k">}</span>,
+    <span class="p">"recommended_action"</span>: <span class="k">{</span> <span class="p">"type"</span>: <span class="s">"choice"</span>, <span class="p">"choice"</span>: <span class="s">"APPROVE_MAX_REFUND"</span>, <span class="p">"confidence"</span>: <span class="n">0.82</span>,
+                               <span class="p">"probabilities"</span>: <span class="k">{</span> <span class="p">"APPROVE_MAX_REFUND"</span>: <span class="n">0.82</span>, <span class="p">"ESCALATE"</span>: <span class="n">0.13</span>, <span class="p">"STANDARD_RESPONSE"</span>: <span class="n">0.05</span> <span class="k">}</span> <span class="k">}</span>,
+    <span class="p">"urgency_level"</span>:      <span class="k">{</span> <span class="p">"type"</span>: <span class="s">"score"</span>,  <span class="p">"score"</span>: <span class="n">2.61</span>, <span class="p">"confidence"</span>: <span class="n">0.74</span> <span class="k">}</span>
+  <span class="k">}</span>,
+  <span class="p">"usage"</span>: <span class="k">{</span> <span class="p">"input_tokens"</span>: <span class="n">312</span>, <span class="p">"output_tokens"</span>: <span class="n">0</span> <span class="k">}</span>  <span class="c">// output always 0 — no text generated</span>
+<span class="k">}</span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ── Deploy ────────────────────────────────────────────────────── -->
+<section id="deploy">
+  <div class="container">
+    <div class="section-label">Deploy</div>
+    <h2>Deploy to Cloudflare Workers in 30 seconds</h2>
+    <p class="section-desc">Zero cold starts · 100,000 free requests per day · Global edge network · Workers AI built-in.</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <h4>Clone the repository</h4>
+          <p><code>git clone https://github.com/furuCRM-Inc/flash-agent-stack</code><br>
+          <code>cd flash-agent-stack/apps/backend</code></p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <h4>Install &amp; authenticate</h4>
+          <p><code>npm install</code>&nbsp;&nbsp; then &nbsp;&nbsp;<code>npx wrangler login</code><br>
+          A browser window opens. Sign in with your Cloudflare account (free).</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <h4>Deploy to the edge</h4>
+          <p><code>npm run deploy:cf</code><br>
+          Wrangler bundles the Hono app and deploys to Cloudflare's global network. Your URL will be printed: <code>https://flash-agent-stack.&lt;your-account&gt;.workers.dev</code></p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-content">
+          <h4>Connect to Salesforce</h4>
+          <p>Paste your Workers URL into <code>Setup → Named Credentials → FlashAgent_Backend → Endpoint</code><br>
+          Also update <code>Setup → Remote Site Settings → FlashAgent_Backend</code>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">5</div>
+        <div class="step-content">
+          <h4>Deploy the LWC to your Salesforce org</h4>
+          <p><code>cd apps/salesforce</code><br>
+          <code>sf project deploy start --source-dir force-app --target-org &lt;alias&gt;</code><br>
+          Drag <b>Flash Agent Demo</b> onto any App Builder page. Done.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Salesforce ────────────────────────────────────────────────── -->
+<section id="salesforce">
+  <div class="container">
+    <div class="section-label">Salesforce Sites</div>
+    <h2>Three execution modes. Auto-detected at runtime.</h2>
+    <p class="section-desc">The LWC tries the fastest available path first, falls back gracefully when CSP or config isn't ready.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Mode</th>
+            <th>Latency</th>
+            <th>Infrastructure</th>
+            <th>CSP Required</th>
+            <th>Best For</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span style="color:var(--electric);font-weight:700;">🟢 EDGE</span><br><small style="color:var(--dim);">Web Worker + Transformers.js</small></td>
+            <td><strong>10–50ms</strong></td>
+            <td class="td-check">None ($0)</td>
+            <td><code style="font-size:11px">cdn.jsdelivr.net</code><br><code style="font-size:11px">huggingface.co</code></td>
+            <td>Public Salesforce Sites, demo orgs</td>
+          </tr>
+          <tr>
+            <td><span style="color:var(--purple);font-weight:700;">🔵 API</span><br><small style="color:var(--dim);">Apex → Cloudflare Workers</small></td>
+            <td><strong>50–150ms</strong></td>
+            <td>Cloudflare (free tier)</td>
+            <td>Remote Site Setting only</td>
+            <td>Production orgs, strict CSP environments</td>
+          </tr>
+          <tr>
+            <td><span style="color:var(--dim);font-weight:700;">⚪ SIM</span><br><small style="color:var(--dim);">Hardcoded fallback</small></td>
+            <td><strong>0ms</strong></td>
+            <td class="td-check">None ($0)</td>
+            <td class="td-check">None</td>
+            <td>First-time setup, CI/CD testing</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ── Pricing ───────────────────────────────────────────────────── -->
+<section id="pricing">
+  <div class="container">
+    <div class="section-label">Pricing</div>
+    <h2>Free for developers. Enterprise support available.</h2>
+    <p class="section-desc">The core engine is MIT licensed and always free. Enterprise support is for production Salesforce orgs that need SLAs, compliance, and custom integrations.</p>
+
+    <div class="pricing-grid">
+      <div class="pricing-card">
+        <div class="pricing-title">Community Edition</div>
+        <div class="pricing-price">$0</div>
+        <div class="pricing-period">Forever free · MIT License</div>
+        <ul class="pricing-features">
+          <li>Core FlashAgent engine (Noul/Choice/Score)</li>
+          <li>Cloudflare Workers &amp; Vercel deployment</li>
+          <li>Salesforce LWC components (Cases, Leads)</li>
+          <li>Chrome Extension (Universal WebMCP)</li>
+          <li>Community support via GitHub Issues</li>
+          <li class="dim">Dedicated Slack channel</li>
+          <li class="dim">SLA guarantee</li>
+          <li class="dim">HIPAA/GDPR compliance docs</li>
+          <li class="dim">Custom model fine-tuning</li>
+        </ul>
+        <a class="pricing-cta pricing-cta--free" href="https://github.com/furuCRM-Inc/flash-agent-stack" target="_blank">Get started free →</a>
+      </div>
+
+      <div class="pricing-card pricing-card--pro">
+        <div class="pricing-title">Enterprise Support</div>
+        <div class="pricing-price">¥150k</div>
+        <div class="pricing-period">per month · Custom pricing available</div>
+        <ul class="pricing-features">
+          <li>Everything in Community</li>
+          <li>Dedicated Slack channel</li>
+          <li>SLA: 99.9% uptime guarantee</li>
+          <li>Custom LWC (CPQ, FSC, Health Cloud)</li>
+          <li>HIPAA / GDPR compliance package</li>
+          <li>Custom model fine-tuning</li>
+          <li>Managed Cloudflare infrastructure</li>
+          <li>On-call incident response</li>
+        </ul>
+        <a class="pricing-cta pricing-cta--pro" href="mailto:support@furucrm.com?subject=[FlashAgent Enterprise]">Contact us →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ────────────────────────────────────────────────────── -->
+<footer>
+  <div class="container" style="display:contents;">
+    <div class="footer-left">
+      Built by <a href="https://furucrm.com" target="_blank">furuCRM Inc.</a> ·
+      MIT License ·
+      <a href="https://github.com/furuCRM-Inc/flash-agent-stack" target="_blank">GitHub</a>
+    </div>
+    <div class="footer-links">
+      <a href="https://github.com/furuCRM-Inc/400ms-agentic-sf" target="_blank">400ms Demo</a>
+      <a href="https://github.com/furuCRM-Inc/dc-semantic-layer" target="_blank">dc-semantic-layer</a>
+      <a href="mailto:support@furucrm.com">Enterprise Support</a>
+    </div>
+  </div>
+</footer>
+
+<!-- ── JavaScript ────────────────────────────────────────────────── -->
+<script>
+  // Copy code block to clipboard
+  function copyCode(id) {
+    const el = document.getElementById(id);
+    const text = el.innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = el.previousElementSibling.querySelector('.code-copy');
+      btn.textContent = 'copied!';
+      btn.style.color = 'var(--green)';
+      setTimeout(() => { btn.textContent = 'copy'; btn.style.color = ''; }, 2000);
+    });
+  }
+
+  // Interactive demo
+  async function runDemo() {
+    const btn    = document.getElementById('demoBtn');
+    const status = document.getElementById('demoStatus');
+    const result = document.getElementById('demoResult');
+    const input  = document.getElementById('demoInput').value.trim();
+
+    if (!input) return;
+
+    btn.disabled = true;
+    status.textContent = 'Connecting to FlashAgent…';
+    result.classList.remove('visible');
+
+    const payload = {
+      model: 'flash-local',
+      state: JSON.stringify({ message: input, tier: 'Enterprise' }),
+      questions: {
+        is_critical: {
+          type: 'noul',
+          instructions: 'Does this message indicate a critical high-value customer churn risk?'
+        },
+        recommended_action: {
+          type: 'choice',
+          instructions: 'What is the best retention action?',
+          criteria: {
+            APPROVE_MAX_REFUND: 'Approve full refund immediately for VIP retention',
+            ESCALATE: 'Escalate to senior support team',
+            STANDARD_RESPONSE: 'Route to standard support queue'
+          }
+        },
+        urgency_level: {
+          type: 'score',
+          instructions: 'Rate the urgency of this customer situation.',
+          levels: { '0': 'Low', '1': 'Medium', '2': 'High', '3': 'Critical' }
+        }
+      }
+    };
+
+    const t0 = Date.now();
+
+    try {
+      const res = await fetch('http://localhost:3000/v1/systemone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(5000)
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const ms = Date.now() - t0;
+      status.textContent = `✅ ${ms}ms · ${data.model}`;
+      result.textContent = JSON.stringify(data, null, 2);
+      result.classList.add('visible');
+
+    } catch (err) {
+      // Fall back to simulated response
+      const ms = Date.now() - t0;
+      status.textContent = `⚪ ${ms}ms · simulated (start backend locally to see real results)`;
+
+      const simulated = {
+        model: 'simulated',
+        answers: {
+          is_critical:        { type: 'noul',   noul: 0.97 },
+          recommended_action: { type: 'choice',  choice: 'APPROVE_MAX_REFUND', confidence: 0.95,
+                                probabilities: { APPROVE_MAX_REFUND: 0.95, ESCALATE: 0.04, STANDARD_RESPONSE: 0.01 } },
+          urgency_level:      { type: 'score',   score: 2.85, confidence: 0.92 }
+        },
+        usage: { input_tokens: 312, output_tokens: 0 }
+      };
+      result.textContent = JSON.stringify(simulated, null, 2);
+      result.classList.add('visible');
+    }
+
+    btn.disabled = false;
+  }
+
+  // Smooth scroll for nav links
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      const target = document.querySelector(a.getAttribute('href'));
+      if (target) {
+        e.preventDefault();
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  });
+</script>
+
+</body>
+</html>

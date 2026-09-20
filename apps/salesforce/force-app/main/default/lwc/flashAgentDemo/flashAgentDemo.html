@@ -1,0 +1,148 @@
+<template>
+    <div class="root">
+
+        <!-- ── Hero ──────────────────────────────────────────────── -->
+        <div class="hero">
+            <span class="hero-logo">⚡</span>
+            <h1 class="hero-title">FlashAgent — System 1 AI</h1>
+            <p class="hero-sub">10ms · Zero hallucination · Runs on Salesforce Sites · $0 infra</p>
+            <div class="mode-badges">
+                <span class={edgeBadgeClass}>🟢 EDGE · in-browser</span>
+                <span class={apiBadgeClass}>🔵 API · Apex → Cloud</span>
+                <span class={simBadgeClass}>⚪ SIMULATED</span>
+            </div>
+        </div>
+
+        <!-- ── WebMCP Bridge (invisible) ─────────────────────────── -->
+        <c-web-mcp-bridge ontoolregistered={handleToolRegistered}></c-web-mcp-bridge>
+
+        <!-- ── Chat + Decision ───────────────────────────────────── -->
+        <div class="two-col">
+
+            <!-- Left: Incoming case terminal -->
+            <div class="panel">
+                <div class="panel-hdr">
+                    <span>💬</span>
+                    <span>Incoming Case · Service Cloud</span>
+                    <span class="hdr-tag">LIVE</span>
+                </div>
+                <div class="terminal">
+                    <div class="terminal-prompt">
+                        <span class="dot-live"></span>
+                        <span>VIP Customer — Enterprise Tier</span>
+                    </div>
+                    <div>
+                        <span>{displayedMessage}</span><span class="cursor" lwc:if={isRunning}>|</span>
+                    </div>
+                    <template lwc:if={chatReceived}>
+                        <div class="terminal-meta">
+                            <span class="badge-crit">CRITICAL</span>
+                            <span class="meta-note">t = 0ms · $50,000 threat detected</span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Right: AI Decision output -->
+            <div class="panel">
+                <div class="panel-hdr">
+                    <span>🧠</span>
+                    <span>System 1 Decision</span>
+                    <span class="hdr-tag">{modeLabel}</span>
+                </div>
+                <template lwc:if={decided}>
+                    <div class="decision-body">
+                        <!-- Noul -->
+                        <div class="decision-row">
+                            <div class="decision-label">Noul · Critical probability</div>
+                            <div class="decision-value">{noulDisplay}</div>
+                            <div class="bar-track">
+                                <div class="bar-fill bar-fill--noul" style={noulBarStyle}></div>
+                            </div>
+                        </div>
+                        <!-- Choice -->
+                        <div class="decision-row">
+                            <div class="decision-label">Choice · Recommended action</div>
+                            <div class="decision-value">{choiceDisplay}</div>
+                            <div class="bar-track">
+                                <div class="bar-fill bar-fill--choice" style={choiceBarStyle}></div>
+                            </div>
+                        </div>
+                        <!-- Score -->
+                        <div class="decision-row">
+                            <div class="decision-label">Score · Urgency (0–3)</div>
+                            <div class="decision-value">{scoreDisplay}</div>
+                            <div class="bar-track">
+                                <div class="bar-fill bar-fill--score" style={scoreBarStyle}></div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+                <template lwc:if={decisionIdle}>
+                    <div class="decision-idle">
+                        <div class="pulse-ring"></div>
+                        <span class="idle-label">Awaiting input…</span>
+                    </div>
+                </template>
+            </div>
+
+        </div>
+
+        <!-- ── Latency Breakdown ──────────────────────────────────── -->
+        <div class="panel">
+            <div class="panel-hdr">
+                <span>⏱</span>
+                <span>Latency Breakdown</span>
+            </div>
+            <div class="latency-row">
+                <div class="latency-card">
+                    <span class="latency-num latency-num--inference">{latencyInference}ms</span>
+                    <span class="latency-lbl">{inferenceLabel}</span>
+                </div>
+                <div class="latency-card">
+                    <span class="latency-num latency-num--webmcp">{latencyWebmcp}ms</span>
+                    <span class="latency-lbl">WebMCP execution</span>
+                </div>
+                <div class="latency-card">
+                    <span class="latency-num latency-num--total">{latencyTotal}ms</span>
+                    <span class="latency-lbl">Total end-to-end</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── WebMCP Tool Cards ──────────────────────────────────── -->
+        <div class="panel">
+            <div class="panel-hdr">
+                <span>🔧</span>
+                <span>WebMCP — Native Tool Registration</span>
+                <span class="hdr-tag">document.modelContext</span>
+            </div>
+            <div class="tools-grid">
+                <template for:each={toolCards} for:item="tool">
+                    <div key={tool.id} class={tool.cardClass}>
+                        <span class="tool-icon">{tool.icon}</span>
+                        <div class="tool-name">{tool.name}</div>
+                        <div class="tool-desc">{tool.description}</div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- ── Resolution ─────────────────────────────────────────── -->
+        <template lwc:if={isResolved}>
+            <div class="panel resolution-panel">
+                <div class="resolution-icon">✅</div>
+                <div class="resolution-title">Resolved in {latencyTotal}ms</div>
+                <div class="resolution-sub">Refund authorized · Case routed · Customer notified</div>
+                <div class="resolution-msg">{resolutionMessage}</div>
+            </div>
+        </template>
+
+        <!-- ── CTA ────────────────────────────────────────────────── -->
+        <div class="cta-row">
+            <button class="btn-trigger" onclick={triggerAgent} disabled={isRunning}>⚡ Trigger Agent</button>
+            <button class="btn-reset"   onclick={resetDemo}>↺ Reset</button>
+        </div>
+
+    </div>
+</template>

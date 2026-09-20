@@ -1,0 +1,613 @@
+<apex:page showHeader="false" sidebar="false" standardStylesheets="false" applyHtmlTag="false" docType="html-5.0" title="⚡ FlashAgent Stack — System 1 AI for Salesforce" contentType="text/html">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>⚡ FlashAgent Stack — 10ms System 1 AI for Salesforce</title>
+<meta name="description" content="Open-source Jev drop-in. Noul/Choice/Score decisions at 10ms. Zero infra cost. Deploy on Salesforce Sites, Cloudflare Workers, or in-browser."/>
+<meta property="og:title" content="⚡ FlashAgent Stack — 10ms System 1 AI for Salesforce"/>
+<meta property="og:description" content="Stop waiting for heavy LLMs. Resolve $50K VIP crises in 400ms with System 1 reflexes + WebMCP native UI control."/>
+<meta property="og:type" content="website"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0B0F19;--s1:#111827;--s2:#1E293B;--s3:#273344;
+  --border:#2D3748;--border2:#374151;
+  --electric:#06B6D4;--amber:#F59E0B;--green:#10B981;
+  --red:#EF4444;--purple:#8B5CF6;--rose:#F43F5E;
+  --text:#F1F5F9;--dim:#94A3B8;--dim2:#64748B;
+  --mono:'SF Mono','Fira Code','Cascadia Code','Courier New',monospace;
+  --sans:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.6;min-height:100vh;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+/* NAV */
+nav{position:sticky;top:0;z-index:100;background:rgba(11,15,25,.85);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid var(--border);height:60px;display:flex;align-items:center;padding:0 40px;gap:32px}
+.nav-logo{font-family:var(--mono);font-size:17px;font-weight:700;color:var(--electric);letter-spacing:-.3px}
+.nav-links{display:flex;gap:28px;margin-left:auto;align-items:center}
+.nav-links a{font-size:14px;color:var(--dim);transition:color .2s}.nav-links a:hover{color:var(--text)}
+.nav-gh{background:var(--s2);border:1px solid var(--border2);border-radius:8px;padding:6px 16px;font-size:13px;font-weight:600;color:var(--text);transition:border-color .2s}.nav-gh:hover{border-color:var(--electric)}
+.nav-cta{background:linear-gradient(135deg,var(--electric),var(--purple));color:#fff;border-radius:8px;padding:7px 18px;font-size:13px;font-weight:700;transition:opacity .2s}.nav-cta:hover{opacity:.85}
+/* HERO */
+.hero{text-align:center;padding:110px 24px 90px;position:relative;overflow:hidden}
+.hero::before{content:'';position:absolute;top:-200px;left:50%;transform:translateX(-50%);width:900px;height:900px;background:radial-gradient(ellipse at center,rgba(6,182,212,.12) 0%,rgba(139,92,246,.08) 40%,transparent 70%);pointer-events:none}
+.hero-eyebrow{display:inline-flex;align-items:center;gap:8px;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.25);border-radius:20px;padding:5px 16px;font-size:12px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--electric);margin-bottom:28px}
+.hero h1{font-size:clamp(38px,7vw,76px);font-weight:900;letter-spacing:-2.5px;line-height:1.05;margin-bottom:20px;position:relative}
+.hero h1 .grad{background:linear-gradient(135deg,var(--electric) 0%,var(--purple) 50%,var(--amber) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-sub{font-size:clamp(16px,2.5vw,20px);color:var(--dim);max-width:680px;margin:0 auto 40px;line-height:1.7}
+.hero-sub strong{color:var(--text)}
+.hero-btns{display:flex;justify-content:center;gap:14px;flex-wrap:wrap;margin-bottom:56px}
+.btn-primary{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,var(--electric),var(--purple));color:#fff;border:none;border-radius:12px;padding:15px 32px;font-size:16px;font-weight:700;cursor:pointer;transition:opacity .2s,transform .1s;font-family:inherit}.btn-primary:hover{opacity:.88;transform:translateY(-1px)}
+.btn-outline{display:inline-flex;align-items:center;gap:8px;background:transparent;color:var(--text);border:1px solid var(--border2);border-radius:12px;padding:14px 30px;font-size:16px;cursor:pointer;transition:border-color .2s;font-family:inherit}.btn-outline:hover{border-color:var(--dim)}
+.hero-stats{display:inline-flex;gap:0;border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--s1)}
+.hs{padding:18px 32px;text-align:center;border-right:1px solid var(--border)}.hs:last-child{border-right:none}
+.hs-num{font-size:28px;font-weight:800;font-family:var(--mono);display:block}
+.hs-num--c{color:var(--electric)}.hs-num--a{color:var(--amber)}.hs-num--g{color:var(--green)}.hs-num--p{color:var(--purple)}
+.hs-lbl{font-size:11px;color:var(--dim2);margin-top:3px;letter-spacing:.3px}
+/* TERMINAL DEMO */
+.demo-section{padding:80px 40px;max-width:1280px;margin:0 auto}
+.section-eyebrow{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--electric);margin-bottom:12px}
+.section-h2{font-size:clamp(28px,4.5vw,44px);font-weight:800;letter-spacing:-1px;margin-bottom:14px}
+.section-sub{font-size:17px;color:var(--dim);max-width:680px;margin-bottom:52px;line-height:1.7}
+.terminal-stage{display:grid;grid-template-columns:1fr 1.1fr 1fr;gap:16px;margin-bottom:28px;align-items:start}
+.win{background:var(--s1);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.win-bar{background:var(--s2);border-bottom:1px solid var(--border);padding:10px 14px;display:flex;align-items:center;gap:6px}
+.wd{width:10px;height:10px;border-radius:50%}
+.wd-r{background:#FF5F57}.wd-a{background:#FFBD2E}.wd-g{background:#28C840}
+.win-title{font-family:var(--mono);font-size:11px;color:var(--dim2);margin-left:6px;letter-spacing:.3px}
+.win-body{padding:16px}
+/* Chat window */
+.chat-vip-label{font-size:11px;color:var(--rose);font-weight:700;letter-spacing:.5px;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.vip-dot{width:7px;height:7px;border-radius:50%;background:var(--rose);animation:blink 1s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.chat-bubble{background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.65;color:var(--text);min-height:70px;position:relative}
+.cursor-blink{animation:cur .6s step-end infinite;color:var(--electric)}
+@keyframes cur{0%,100%{opacity:1}50%{opacity:0}}
+.chat-tag{display:inline-flex;align-items:center;gap:6px;background:var(--rose);color:#fff;font-size:10px;font-weight:700;letter-spacing:1px;border-radius:4px;padding:3px 9px;margin-top:10px}
+.chat-hidden{display:none}
+/* JSON window */
+.json-pre{font-family:var(--mono);font-size:11.5px;line-height:1.8;color:#94A3B8;overflow-x:auto}
+.jk{color:var(--electric)}.js{color:#A5D6FF}.jn{color:var(--amber)}.jv{color:var(--green)}
+.latency-tag{display:inline-flex;align-items:center;gap:6px;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.3);color:var(--green);font-size:12px;font-weight:700;font-family:var(--mono);border-radius:6px;padding:5px 12px;margin-top:12px;opacity:0;transition:opacity .4s}
+.latency-tag.show{opacity:1}
+/* Salesforce window */
+.sf-header{background:rgba(6,182,212,.06);border-bottom:1px solid rgba(6,182,212,.15);padding:10px 14px;font-size:12px;color:var(--electric);font-weight:600}
+.sf-case{background:var(--s2);border-radius:8px;padding:12px;margin-bottom:12px}
+.sf-case-label{font-size:10px;color:var(--dim2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
+.sf-case-value{font-size:13px;color:var(--text);font-weight:500}
+.sf-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:11px;border-radius:8px;font-size:14px;font-weight:700;border:none;cursor:pointer;transition:all .3s;font-family:inherit}
+.sf-btn--default{background:rgba(6,182,212,.12);border:1px solid rgba(6,182,212,.3);color:var(--electric)}
+.sf-btn--pulse{animation:pulse-btn 0.5s ease-in-out infinite alternate;background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.5);color:var(--amber)}
+@keyframes pulse-btn{from{box-shadow:0 0 0 0 rgba(245,158,11,.4)}to{box-shadow:0 0 14px 4px rgba(245,158,11,.2)}}
+.sf-btn--done{background:rgba(16,185,129,.15);border-color:rgba(16,185,129,.4);color:var(--green)}
+.resolved-badge{display:none;text-align:center;padding:16px 8px;animation:pop .4s cubic-bezier(.34,1.56,.64,1)}
+@keyframes pop{from{transform:scale(.5);opacity:0}to{transform:scale(1);opacity:1}}
+.resolved-badge.show{display:block}
+.resolved-icon{font-size:36px;display:block;margin-bottom:8px}
+.resolved-num{font-size:22px;font-weight:800;font-family:var(--mono);color:var(--green)}
+.resolved-lbl{font-size:11px;color:var(--dim);margin-top:4px}
+/* Progress bar */
+.progress-bar{height:3px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:20px}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--electric),var(--purple),var(--amber));border-radius:2px;width:0;transition:width .4s ease}
+/* FEATURES */
+.features{padding:80px 40px;max-width:1280px;margin:0 auto}
+.feature-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.feat-card{background:var(--s1);border:1px solid var(--border);border-radius:14px;padding:26px;transition:border-color .2s,transform .2s}
+.feat-card:hover{border-color:rgba(6,182,212,.4);transform:translateY(-2px)}
+.feat-icon{font-size:32px;margin-bottom:16px;display:block}
+.feat-card h3{font-size:18px;font-weight:700;margin-bottom:8px}
+.feat-card p{font-size:14px;color:var(--dim);line-height:1.7}
+.feat-tag{display:inline-block;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--electric);font-size:11px;font-weight:600;border-radius:6px;padding:3px 10px;margin-top:12px;font-family:var(--mono)}
+/* COMPARISON */
+.comparison{padding:80px 40px;max-width:1280px;margin:0 auto}
+.table-wrap{overflow-x:auto;border-radius:14px;border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+thead tr{background:var(--s2)}
+th{padding:14px 20px;text-align:left;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--dim2);border-bottom:1px solid var(--border)}
+th:first-child{width:35%}
+.th-free{color:var(--electric)}.th-pro{color:var(--purple)}
+td{padding:13px 20px;border-bottom:1px solid var(--border);vertical-align:top;color:var(--text)}
+tr:last-child td{border-bottom:none}
+tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+.td-feat{font-weight:600;font-size:14px}
+.td-check{color:var(--green);font-weight:700}
+.td-x{color:var(--dim2)}
+.td-price{font-family:var(--mono);font-size:16px;font-weight:800;color:var(--electric)}
+.td-price-pro{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--purple)}
+/* HOW TO DEPLOY */
+.deploy{padding:80px 40px;max-width:1280px;margin:0 auto}
+.deploy-tabs{display:flex;gap:6px;margin-bottom:28px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:5px;width:fit-content}
+.tab{padding:8px 20px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;color:var(--dim);transition:all .2s}
+.tab.active{background:var(--s3);color:var(--text)}
+.tab-content{display:none}.tab-content.active{display:block}
+.code-card{background:var(--s1);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.code-bar{background:var(--s2);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;gap:8px}
+.code-bar-title{font-family:var(--mono);font-size:12px;color:var(--dim2);margin-left:4px}
+.copy-btn{margin-left:auto;background:var(--s3);border:1px solid var(--border);color:var(--dim);font-size:11px;padding:3px 10px;border-radius:5px;cursor:pointer;font-family:var(--mono);transition:color .2s}.copy-btn:hover{color:var(--text)}
+pre{font-family:var(--mono);font-size:13px;padding:20px;overflow-x:auto;line-height:1.75;color:var(--text)}
+.cm{color:var(--dim2)}.ck{color:#f97316}.cs{color:#A5D6FF}.cv{color:var(--green)}.ce{color:var(--electric)}.cp{color:var(--purple)}
+/* ENTERPRISE CTA */
+.enterprise{padding:80px 40px;max-width:1280px;margin:0 auto}
+.ent-card{background:linear-gradient(135deg,rgba(139,92,246,.12) 0%,rgba(6,182,212,.08) 100%);border:1px solid rgba(139,92,246,.3);border-radius:20px;padding:60px 48px;text-align:center;position:relative;overflow:hidden}
+.ent-card::before{content:'';position:absolute;top:-100px;right:-100px;width:400px;height:400px;background:radial-gradient(circle,rgba(139,92,246,.15) 0%,transparent 70%);pointer-events:none}
+.ent-eyebrow{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--purple);margin-bottom:16px}
+.ent-h2{font-size:clamp(28px,4vw,44px);font-weight:800;letter-spacing:-1px;margin-bottom:16px}
+.ent-sub{font-size:17px;color:var(--dim);max-width:600px;margin:0 auto 40px;line-height:1.7}
+.ent-btns{display:flex;justify-content:center;gap:14px;flex-wrap:wrap}
+.ent-features{display:flex;justify-content:center;flex-wrap:wrap;gap:12px;margin-top:36px}
+.ent-feat{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--dim)}
+.ent-feat::before{content:'✓';color:var(--green);font-weight:700}
+/* FOOTER */
+footer{border-top:1px solid var(--border);padding:40px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;max-width:1280px;margin:0 auto}
+.footer-brand{font-family:var(--mono);font-size:14px;color:var(--dim)}.footer-brand a{color:var(--electric)}
+.footer-links{display:flex;gap:24px;flex-wrap:wrap}
+.footer-links a{font-size:13px;color:var(--dim);transition:color .2s}.footer-links a:hover{color:var(--text)}
+/* ANIM UTILS */
+@keyframes fade-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fade-in .5s ease forwards}
+@keyframes shimmer{0%{background-position:-200% center}100%{background-position:200% center}}
+/* RESPONSIVE */
+@media(max-width:900px){
+  .terminal-stage{grid-template-columns:1fr}
+  nav{padding:0 20px}.nav-links{display:none}
+  .hero{padding:70px 20px 60px}
+  .demo-section,.features,.comparison,.deploy,.enterprise,.footer{padding-left:20px;padding-right:20px}
+  .hero-stats{flex-wrap:wrap}.hs{flex:1;min-width:140px}
+  .ent-card{padding:40px 24px}
+}
+</style>
+</head>
+<body>
+
+<!-- ── NAV ─────────────────────────────────────────────────────── -->
+<nav>
+  <span class="nav-logo">⚡ FlashAgent</span>
+  <div class="nav-links">
+    <a href="#demo">Demo</a>
+    <a href="#features">Features</a>
+    <a href="#deploy">Deploy</a>
+    <a href="#pricing">Pricing</a>
+    <a class="nav-gh" href="https://github.com/furuCRM-Inc/flash-agent-stack" target="_blank">⭐ GitHub</a>
+    <a class="nav-cta" href="mailto:support@furucrm.com">Enterprise →</a>
+  </div>
+</nav>
+
+<!-- ── HERO ────────────────────────────────────────────────────── -->
+<section class="hero">
+  <div class="hero-eyebrow">⚡ Open-source · MIT License · Salesforce Native</div>
+  <h1>
+    Stop Waiting for<br/>
+    <span class="grad">Heavy LLMs.</span>
+  </h1>
+  <p class="hero-sub">
+    <strong>FlashAgent Stack</strong> resolves a $50,000 VIP crisis in <strong>400ms</strong> —
+    not 15 seconds. System 1 reflex AI + WebMCP native UI control,
+    deployable on Salesforce Sites, Cloudflare Workers, or your browser.
+  </p>
+  <div class="hero-btns">
+    <a class="btn-primary" href="https://github.com/furuCRM-Inc/flash-agent-stack" target="_blank">⭐ Get Started Free</a>
+    <a class="btn-outline" href="mailto:support@furucrm.com">Talk to Enterprise Support</a>
+  </div>
+  <div class="hero-stats">
+    <div class="hs"><span class="hs-num hs-num--c">10ms</span><div class="hs-lbl">Warm inference</div></div>
+    <div class="hs"><span class="hs-num hs-num--a">$0</span><div class="hs-lbl">Infrastructure cost</div></div>
+    <div class="hs"><span class="hs-num hs-num--g">0</span><div class="hs-lbl">Output tokens</div></div>
+    <div class="hs"><span class="hs-num hs-num--p">MIT</span><div class="hs-lbl">License</div></div>
+  </div>
+</section>
+
+<!-- ── INTERACTIVE TERMINAL DEMO ────────────────────────────────── -->
+<section class="demo-section" id="demo">
+  <div class="section-eyebrow">Live Simulation</div>
+  <h2 class="section-h2">Watch it resolve a $50,000 crisis in real time</h2>
+  <p class="section-sub">Three windows. One AI reflex. The support rep hasn't finished reading the message.</p>
+
+  <div class="terminal-stage">
+
+    <!-- Window 1: Incoming chat -->
+    <div class="win" id="win1">
+      <div class="win-bar">
+        <span class="wd wd-r"></span><span class="wd wd-a"></span><span class="wd wd-g"></span>
+        <span class="win-title">💬 Service Cloud · Live Chat</span>
+      </div>
+      <div class="win-body">
+        <div class="chat-vip-label"><span class="vip-dot"></span>VIP Customer · Enterprise Tier</div>
+        <div class="chat-bubble">
+          <span id="chatText"></span><span class="cursor-blink" id="chatCursor">|</span>
+        </div>
+        <div class="chat-tag chat-hidden" id="chatTag">🔴 CRITICAL · $50,000 THREAT</div>
+      </div>
+    </div>
+
+    <!-- Window 2: JSON logits -->
+    <div class="win" id="win2">
+      <div class="win-bar">
+        <span class="wd wd-r"></span><span class="wd wd-a"></span><span class="wd wd-g"></span>
+        <span class="win-title">🧠 System 1 — Jev Reflex Engine</span>
+      </div>
+      <div class="win-body">
+        <pre class="json-pre" id="jsonOutput" style="opacity:0;transition:opacity .4s"></pre>
+        <div class="latency-tag" id="latencyTag">⚡ 50ms · 0 output tokens</div>
+      </div>
+    </div>
+
+    <!-- Window 3: Salesforce action -->
+    <div class="win" id="win3">
+      <div class="win-bar">
+        <span class="wd wd-r"></span><span class="wd wd-a"></span><span class="wd wd-g"></span>
+        <span class="win-title">🔧 WebMCP · Salesforce LWC</span>
+      </div>
+      <div class="sf-header">Case #VIP-001 · Enterprise</div>
+      <div class="win-body">
+        <div class="sf-case">
+          <div class="sf-case-label">Customer</div>
+          <div class="sf-case-value">Tanaka Corp (Enterprise)</div>
+        </div>
+        <div class="sf-case">
+          <div class="sf-case-label">Threat Value</div>
+          <div class="sf-case-value" style="color:var(--rose);font-weight:700">$50,000 ACV at risk</div>
+        </div>
+        <button class="sf-btn sf-btn--default" id="sfBtn">💳 Approve Refund</button>
+        <div class="resolved-badge" id="resolvedBadge">
+          <span class="resolved-icon">✅</span>
+          <div class="resolved-num">412ms</div>
+          <div class="resolved-lbl">TOTAL PROCESS TIME</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  <div style="display:flex;justify-content:center;margin-top:20px">
+    <button class="btn-primary" id="demoRunBtn" onclick="runDemoAnim()">▶ Run Demo</button>
+  </div>
+</section>
+
+<!-- ── FEATURES ──────────────────────────────────────────────────── -->
+<section class="features" id="features">
+  <div class="section-eyebrow">Why This Changes Everything</div>
+  <h2 class="section-h2">System 1 AI — the paradigm shift</h2>
+  <p class="section-sub">Traditional LLMs are System 2: slow, verbose, expensive. FlashAgent is System 1: pure reflex, no text generation, calibrated probabilities.</p>
+  <div class="feature-grid">
+    <div class="feat-card">
+      <span class="feat-icon">⚡</span>
+      <h3>Zero-Token Latency</h3>
+      <p>FlashAgent never generates text. It evaluates typed questions against a state object and returns numbers — probability, choice, score. No streaming. No hallucination.</p>
+      <span class="feat-tag">0 output tokens</span>
+    </div>
+    <div class="feat-card">
+      <span class="feat-icon">🔌</span>
+      <h3>Native WebMCP Bridge</h3>
+      <p>LWC components register themselves as AI-callable tools via <code style="font-family:monospace;font-size:12px;background:rgba(255,255,255,.06);padding:2px 6px;border-radius:3px">document.modelContext.registerTool()</code>. No screenshot. No DOM scraping. Direct function calls.</p>
+      <span class="feat-tag">document.modelContext</span>
+    </div>
+    <div class="feat-card">
+      <span class="feat-icon">🎯</span>
+      <h3>Three Question Types</h3>
+      <p><strong>Noul</strong> — calibrated binary probability (0–1).<br/><strong>Choice</strong> — routing decision with confidence.<br/><strong>Score</strong> — weighted urgency across ordered levels.</p>
+      <span class="feat-tag">Noul · Choice · Score</span>
+    </div>
+    <div class="feat-card">
+      <span class="feat-icon">☁️</span>
+      <h3>Deploy Anywhere Free</h3>
+      <p>Cloudflare Workers free tier: 100,000 requests/day, zero cold starts. Vercel, Railway, Bun locally. Or run entirely in-browser with Transformers.js — zero infrastructure forever.</p>
+      <span class="feat-tag">$0 infra cost</span>
+    </div>
+    <div class="feat-card">
+      <span class="feat-icon">🏗️</span>
+      <h3>Salesforce Sites Native</h3>
+      <p>Full Visualforce + LWC deployment. Auto-detects: in-browser NLI → Apex callout → simulated fallback. Works on Experience Cloud, App Builder, and standalone Salesforce Sites.</p>
+      <span class="feat-tag">sf project deploy start</span>
+    </div>
+    <div class="feat-card">
+      <span class="feat-icon">🔒</span>
+      <h3>Enterprise-Grade Security</h3>
+      <p>Runs within Salesforce sharing rules and user permissions. Named Credential for endpoint config. No data leaves your org without explicit callout configuration.</p>
+      <span class="feat-tag">Named Credentials</span>
+    </div>
+  </div>
+</section>
+
+<!-- ── COMPARISON TABLE ──────────────────────────────────────────── -->
+<section class="comparison" id="pricing">
+  <div class="section-eyebrow">Pricing</div>
+  <h2 class="section-h2">Two plans. One codebase.</h2>
+  <p class="section-sub">The core engine is MIT licensed and forever free. Enterprise support is for production Salesforce orgs that need SLAs and compliance.</p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th class="th-free">Community Edition</th>
+          <th class="th-pro">Enterprise Support</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="td-feat">Core Inference Engine</td><td>Self-hosted (Cloudflare / Bun / Browser)</td><td>High-volume managed infrastructure</td></tr>
+        <tr><td class="td-feat">WebMCP Bridge</td><td>Standard objects (Case, Lead)</td><td>Unlimited custom objects + CPQ</td></tr>
+        <tr><td class="td-feat">Deployment</td><td>Cloudflare Workers, Vercel, Railway, local</td><td>Fully managed by furuCRM Inc.</td></tr>
+        <tr><td class="td-feat">Infrastructure cost</td><td class="td-check">$0 forever</td><td>Included in support fee</td></tr>
+        <tr><td class="td-feat">Support</td><td>Community · GitHub Issues</td><td class="td-check">Dedicated Slack · 24h SLA</td></tr>
+        <tr><td class="td-feat">Custom model fine-tuning</td><td class="td-x">— self-configured</td><td class="td-check">✓ Tailored to your data</td></tr>
+        <tr><td class="td-feat">GDPR / HIPAA compliance</td><td class="td-x">— self-managed</td><td class="td-check">✓ Certified sandbox wrappers</td></tr>
+        <tr><td class="td-feat">License</td><td>MIT — use freely in commercial projects</td><td>Commercial support agreement</td></tr>
+        <tr>
+          <td class="td-feat">Pricing</td>
+          <td><span class="td-price">$0</span></td>
+          <td><span class="td-price-pro">¥150,000/month</span><br/><small style="color:var(--dim2)">Custom quotes available</small></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ── DEPLOY GUIDE ──────────────────────────────────────────────── -->
+<section class="deploy" id="deploy">
+  <div class="section-eyebrow">Quick Start</div>
+  <h2 class="section-h2">Deploy in 30 seconds</h2>
+  <p class="section-sub">Choose your target. All paths use the same Hono backend and identical API surface.</p>
+
+  <div class="deploy-tabs">
+    <div class="tab active" onclick="switchTab('cf')">Cloudflare Workers</div>
+    <div class="tab" onclick="switchTab('sf')">Salesforce Sites</div>
+    <div class="tab" onclick="switchTab('local')">Local / Bun</div>
+  </div>
+
+  <div class="tab-content active" id="tab-cf">
+    <div class="code-card">
+      <div class="code-bar">
+        <span class="wd wd-r"></span><span class="wd wd-a"></span><span class="wd wd-g"></span>
+        <span class="code-bar-title">bash</span>
+        <button class="copy-btn" onclick="copyPre('code-cf')">copy</button>
+      </div>
+      <pre id="code-cf"><span class="cm"># 1. Clone &amp; enter backend</span>
+git clone https://github.com/furuCRM-Inc/flash-agent-stack
+cd flash-agent-stack/apps/backend
+
+<span class="cm"># 2. Install dependencies</span>
+npm install
+
+<span class="cm"># 3. Login to Cloudflare (free account)</span>
+npx wrangler login
+
+<span class="cm"># 4. Deploy — uses Workers AI built-in (no model download needed)</span>
+npm run deploy:cf
+<span class="cv"># → https://flash-agent-stack.YOUR-ACCOUNT.workers.dev</span>
+
+<span class="cm"># 5. Set endpoint in Salesforce</span>
+<span class="cm">#    Setup → Named Credentials → FlashAgent_Backend → Edit</span>
+<span class="cm">#    Endpoint: https://flash-agent-stack.YOUR-ACCOUNT.workers.dev</span></pre>
+    </div>
+  </div>
+
+  <div class="tab-content" id="tab-sf">
+    <div class="code-card">
+      <div class="code-bar">
+        <span class="wd wd-r"></span><span class="wd wd-a"></span><span class="wd wd-g"></span>
+        <span class="code-bar-title">bash</span>
+        <button class="copy-btn" onclick="copyPre('code-sf')">copy</button>
+      </div>
+      <pre id="code-sf"><span class="cm"># 1. Clone repo</span>
+git clone https://github.com/furuCRM-Inc/flash-agent-stack
+cd flash-agent-stack/apps/salesforce
+
+<span class="cm"># 2. Deploy to your Salesforce org</span>
+sf project deploy start --source-dir force-app --target-org <span class="ce">&lt;alias&gt;</span>
+
+<span class="cm"># 3. Add CSP Trusted Sites (for Edge in-browser mode)</span>
+<span class="cm">#    Setup → CSP Trusted Sites → New</span>
+<span class="cm">#      https://cdn.jsdelivr.net  (Transformers.js CDN)</span>
+<span class="cm">#      https://huggingface.co    (NLI model weights)</span>
+
+<span class="cm"># 4. Expose in App Builder or Salesforce Sites</span>
+<span class="cm">#    Drag "Flash Agent Demo" or "Flash Agent Landing" onto any page</span>
+
+<span class="cm"># 5. Run Apex tests</span>
+sf apex run test --class-names JevReflexControllerTest --target-org <span class="ce">&lt;alias&gt;</span></pre>
+    </div>
+  </div>
+
+  <div class="tab-content" id="tab-local">
+    <div class="code-card">
+      <div class="code-bar">
+        <span class="wd wd-r"></span><span class="wd wd-a"></span><span class="wd wd-g"></span>
+        <span class="code-bar-title">bash</span>
+        <button class="copy-btn" onclick="copyPre('code-local')">copy</button>
+      </div>
+      <pre id="code-local"><span class="cm"># 1. Clone repo</span>
+git clone https://github.com/furuCRM-Inc/flash-agent-stack
+cd flash-agent-stack/apps/backend
+
+<span class="cm"># 2. Install Bun (if not installed)</span>
+curl -fsSL https://bun.sh/install | bash
+
+<span class="cm"># 3. Start the server</span>
+bun install &amp;&amp; bun run dev
+<span class="cv"># → http://localhost:3000</span>
+<span class="cv"># Model downloads automatically (~40MB, once only)</span>
+
+<span class="cm"># 4. Test the API</span>
+curl -X POST http://localhost:3000/v1/systemone \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "flash-local",
+    "state": "{\"message\": \"Cancel NOW!\", \"tier\": \"Enterprise\"}",
+    "questions": {
+      "is_critical": { "type": "noul", "instructions": "Critical VIP churn risk?" }
+    }
+  }'</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ── ENTERPRISE CTA ────────────────────────────────────────────── -->
+<section class="enterprise" id="enterprise">
+  <div class="ent-card">
+    <div class="ent-eyebrow">Enterprise Support</div>
+    <h2 class="ent-h2">Running Salesforce at scale?</h2>
+    <p class="ent-sub">
+      Don't let open-source maintenance slow you down.
+      Let our core team handle your architecture, security hardening,
+      and custom model fine-tuning — with guaranteed SLAs.
+    </p>
+    <div class="ent-btns">
+      <a class="btn-primary" href="mailto:support@furucrm.com?subject=[FlashAgent Enterprise] - Production Inquiry" style="font-size:15px;padding:15px 36px">⚡ Secure Your Enterprise Audit</a>
+      <a class="btn-outline" href="https://github.com/furuCRM-Inc/flash-agent-stack" target="_blank" style="font-size:15px;padding:14px 32px">View Source on GitHub</a>
+    </div>
+    <div class="ent-features">
+      <span class="ent-feat">Dedicated Slack channel</span>
+      <span class="ent-feat">SLA: 99.9% uptime</span>
+      <span class="ent-feat">HIPAA / GDPR docs</span>
+      <span class="ent-feat">Custom model fine-tuning</span>
+      <span class="ent-feat">Managed Cloudflare infra</span>
+      <span class="ent-feat">On-call incident response</span>
+    </div>
+  </div>
+</section>
+
+<!-- ── FOOTER ────────────────────────────────────────────────────── -->
+<footer>
+  <div class="footer-brand">
+    ⚡ FlashAgent Stack · Built by <a href="https://furucrm.com" target="_blank">furuCRM Inc.</a> · MIT License
+  </div>
+  <div class="footer-links">
+    <a href="https://github.com/furuCRM-Inc/flash-agent-stack" target="_blank">GitHub</a>
+    <a href="https://github.com/furuCRM-Inc/400ms-agentic-sf" target="_blank">400ms Demo</a>
+    <a href="https://github.com/furuCRM-Inc/dc-semantic-layer" target="_blank">dc-semantic-layer</a>
+    <a href="mailto:support@furucrm.com">support@furucrm.com</a>
+  </div>
+</footer>
+
+<script>
+// ── Tab switcher ──────────────────────────────────────────────────
+function switchTab(id) {
+  document.querySelectorAll('.tab').forEach(function(t,i){
+    var ids = ['cf','sf','local'];
+    t.classList.toggle('active', ids[i] === id);
+  });
+  document.querySelectorAll('.tab-content').forEach(function(c){
+    c.classList.remove('active');
+  });
+  var el = document.getElementById('tab-'+id);
+  if (el) el.classList.add('active');
+}
+
+// ── Copy code ─────────────────────────────────────────────────────
+function copyPre(id) {
+  var el = document.getElementById(id);
+  if (!el || !navigator.clipboard) return;
+  navigator.clipboard.writeText(el.innerText).then(function(){
+    var btn = el.closest('.code-card').querySelector('.copy-btn');
+    btn.textContent = 'copied!';
+    btn.style.color = 'var(--green)';
+    setTimeout(function(){ btn.textContent = 'copy'; btn.style.color = ''; }, 2000);
+  });
+}
+
+// ── Terminal demo animation ───────────────────────────────────────
+var demoRunning = false;
+
+var CHAT_MSG = 'System down. Lost $50,000. Cancel my subscription and refund me NOW!';
+
+var JSON_LINES = [
+  '// POST /v1/systemone → 50ms',
+  '{',
+  '  "answers": {',
+  '    "is_critical": {',
+  '      "type": "noul",',
+  '      "noul": 0.97',
+  '    },',
+  '    "recommended_action": {',
+  '      "type": "choice",',
+  '      "choice": "APPROVE_MAX_REFUND",',
+  '      "confidence": 0.95',
+  '    },',
+  '    "urgency_level": {',
+  '      "type": "score",',
+  '      "score": 2.85,',
+  '      "confidence": 0.92',
+  '    }',
+  '  },',
+  '  "usage": { "output_tokens": 0 }',
+  '}'
+];
+
+function wait(ms) {
+  return new Promise(function(r){ setTimeout(r, ms); });
+}
+
+async function runDemoAnim() {
+  if (demoRunning) return;
+  demoRunning = true;
+  var btn = document.getElementById('demoRunBtn');
+  btn.disabled = true;
+
+  // Reset all
+  document.getElementById('chatText').textContent = '';
+  document.getElementById('chatCursor').style.display = 'inline';
+  document.getElementById('chatTag').classList.add('chat-hidden');
+  document.getElementById('jsonOutput').style.opacity = '0';
+  document.getElementById('jsonOutput').innerHTML = '';
+  document.getElementById('latencyTag').classList.remove('show');
+  document.getElementById('sfBtn').className = 'sf-btn sf-btn--default';
+  document.getElementById('sfBtn').style.display = 'flex';
+  document.getElementById('resolvedBadge').classList.remove('show');
+  document.getElementById('progressFill').style.width = '0';
+
+  // Phase 1: typewriter chat message
+  var chatEl = document.getElementById('chatText');
+  for (var i = 0; i < CHAT_MSG.length; i++) {
+    chatEl.textContent += CHAT_MSG[i];
+    await wait(14);
+  }
+  document.getElementById('chatCursor').style.display = 'none';
+  document.getElementById('chatTag').classList.remove('chat-hidden');
+  document.getElementById('progressFill').style.width = '20%';
+  await wait(400);
+
+  // Phase 2: JSON output appears line by line
+  var jsonEl = document.getElementById('jsonOutput');
+  jsonEl.style.opacity = '1';
+  jsonEl.innerHTML = '';
+  for (var j = 0; j < JSON_LINES.length; j++) {
+    var line = JSON_LINES[j];
+    var colored = line
+      .replace(/"([^"]+)":/g, '<span class="ce">"$1"</span>:')
+      .replace(/: "([^"]+)"/g, ': <span class="cs">"$1"</span>')
+      .replace(/: ([\d.]+)/g, ': <span class="jn">$1</span>')
+      .replace(/^(\s*\/\/.*)/g, '<span class="cm">$1</span>');
+    jsonEl.innerHTML += colored + '\n';
+    await wait(60);
+  }
+  document.getElementById('progressFill').style.width = '55%';
+  await wait(200);
+  document.getElementById('latencyTag').classList.add('show');
+  await wait(600);
+
+  // Phase 3: WebMCP pulsing button
+  var sfBtn = document.getElementById('sfBtn');
+  sfBtn.className = 'sf-btn sf-btn--pulse';
+  sfBtn.textContent = '⚡ WebMCP → approve_refund()';
+  document.getElementById('progressFill').style.width = '80%';
+  await wait(900);
+
+  // Phase 4: Done
+  sfBtn.style.display = 'none';
+  document.getElementById('resolvedBadge').classList.add('show');
+  document.getElementById('progressFill').style.width = '100%';
+  await wait(300);
+
+  demoRunning = false;
+  btn.disabled = false;
+  btn.textContent = '↺ Run Again';
+}
+
+// Auto-play on load after short delay
+setTimeout(runDemoAnim, 1200);
+</script>
+</body>
+</html>
+</apex:page>

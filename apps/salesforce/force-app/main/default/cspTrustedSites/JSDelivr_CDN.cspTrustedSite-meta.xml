@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CspTrustedSite xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Allow loading Transformers.js library bundle from jsDelivr CDN (required for Edge inference Web Worker)</description>
+    <endpointUrl>https://cdn.jsdelivr.net</endpointUrl>
+    <isActive>true</isActive>
+    <isApplicableToSite>true</isApplicableToSite>
+    <isApplicableToComponents>true</isApplicableToComponents>
+    <context>All</context>
+</CspTrustedSite>

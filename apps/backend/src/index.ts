@@ -34,6 +34,21 @@ app.route('/v1/chat/completions', completionsRoute);
 
 const PORT = Number(process.env.PORT ?? 3000);
 
+function printBanner() {
+  console.log(`
+╔══════════════════════════════════════════════════════════════╗
+║  ⚡ FlashAgent Stack — Community Edition (MIT License)       ║
+║  Noul · Choice · Score at 10–50ms · Zero hallucination       ║
+║                                                              ║
+║  For Enterprise SLA, custom Salesforce LWC, HIPAA/GDPR,     ║
+║  and managed infra → https://furucrm.com                     ║
+║  or email: support@furucrm.com                              ║
+╚══════════════════════════════════════════════════════════════╝
+`);
+}
+
+printBanner();
+
 // Warm the model on startup so first request is fast
 getClassifier().catch(err => console.error('[FlashAgent] Model warm-up failed:', err));
 
@@ -44,8 +59,11 @@ export default {
 };
 
 // Node.js fallback (npm run start:node)
-if (typeof Bun === 'undefined') {
-  import('@hono/node-server').then(({ serve }) => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const isBun = typeof (globalThis as any).Bun !== 'undefined';
+if (!isBun) {
+  // @ts-expect-error — @hono/node-server available after npm install
+  import('@hono/node-server').then(({ serve }: { serve: (opts: { fetch: typeof app.fetch; port: number }) => void }) => {
     serve({ fetch: app.fetch, port: PORT });
     console.log(`[FlashAgent] Listening on http://localhost:${PORT}`);
   });

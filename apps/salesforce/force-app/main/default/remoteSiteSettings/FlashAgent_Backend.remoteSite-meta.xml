@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RemoteSiteSetting xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>FlashAgent backend deployed on Cloudflare Workers / Vercel / Railway. Update URL after deployment.</description>
+    <!-- Replace with your actual deployed URL -->
+    <url>https://your-worker.workers.dev</url>
+    <isActive>true</isActive>
+    <disableProtocolSecurity>false</disableProtocolSecurity>
+</RemoteSiteSetting>
