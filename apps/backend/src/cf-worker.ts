@@ -34,6 +34,13 @@ import {
   type CompilerInput,
 } from './engine/soqlCompiler.js';
 
+import {
+  detectQueryEngine,
+  compileDataCloudQuery,
+  type DataCloudObjectMeta,
+  type DataCloudCompilerInput,
+} from './engine/dataCloudSqlCompiler.js';
+
 interface CfAiTextInput {
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
   max_tokens?: number;
@@ -462,6 +469,23 @@ async function loadCustomSObjectsFromKv(orgId: string, kv: KVNamespace | undefin
 async function cacheCustomSObjectsInKv(orgId: string, objects: CustomSObjectEntry[], kv: KVNamespace | undefined): Promise<void> {
   if (!kv || objects.length === 0) return;
   await kv.put(`sobjects:${orgId}`, JSON.stringify(objects), { expirationTtl: SCHEMA_KV_TTL });
+}
+
+// ── Data Cloud DMO/DLO catalog KV helpers ─────────────────────────────────────
+// Apex seeds the org's Data Cloud object catalog once per session.
+// Worker uses it to route queries to the DC SQL compiler instead of SOQL.
+
+async function loadDataCloudCatalogFromKv(orgId: string, kv: KVNamespace | undefined): Promise<Record<string, DataCloudObjectMeta>> {
+  if (!kv) return {};
+  try {
+    const cached = (await kv.get(`datacloud:${orgId}`, 'json')) as Record<string, DataCloudObjectMeta> | null;
+    return cached && typeof cached === 'object' ? cached : {};
+  } catch { return {}; }
+}
+
+async function cacheDataCloudCatalogInKv(orgId: string, catalog: Record<string, DataCloudObjectMeta>, kv: KVNamespace | undefined): Promise<void> {
+  if (!kv || Object.keys(catalog).length === 0) return;
+  await kv.put(`datacloud:${orgId}`, JSON.stringify(catalog), { expirationTtl: SCHEMA_KV_TTL });
 }
 
 // ── Synonym KV helpers ─────────────────────────────────────────────────────────
@@ -1075,9 +1099,35 @@ app.post('/v1/agent-action', async (c) => {
 
     const effectiveSObject = jev.sObject ?? body.sObjectType ?? null;
 
-    // ── SOQL_SEARCH / SOSL fast-route ─────────────────────────────────────
+    // ── SOQL_SEARCH / SOSL / Data Cloud fast-route ────────────────────────
     if (jev.intent === 'SOQL_SEARCH' && jev.confidence >= 0.72) {
       const sObjectForQuery = effectiveSObject ?? 'Account';
+      const queryEngine = detectQueryEngine(sObjectForQuery);
+
+      // ── Data Cloud SQL path ──────────────────────────────────────────────
+      if (queryEngine === 'DATACLOUD_SQL') {
+        const dcCatalog = await loadDataCloudCatalogFromKv(orgId, c.env.TENANT_KV);
+        const dcInput: DataCloudCompilerInput = {
+          intent:     'DATACLOUD_QUERY',
+          baseObject: sObjectForQuery,
+          limit:      20,
+        };
+        const compiled = compileDataCloudQuery(dcInput, dcCatalog);
+        const response: AgentActionResponse = {
+          intent:         'SOQL_SEARCH',
+          message:        isJaLang ? `Data Cloud: ${sObjectForQuery} を照会…` : `Data Cloud: querying ${sObjectForQuery}…`,
+          search_sobject: sObjectForQuery,
+          soql_filter:    { conditions: [], order_by: '', limit: 20 },
+          search_query:   compiled.sql,   // ANSI SQL — routed to DC Query API v2 by Apex
+          fields:         {},
+          ...(compiled.warnings.length ? { warnings: compiled.warnings } : {}),
+        };
+        if (tenant?.config?.aiCredits) {
+          (response as Record<string, unknown>).remaining_credits = tenant.config.aiCredits.remaining;
+        }
+        return c.json(response);
+      }
+
       const [validFields, fieldTypes, childRels, grammar] = await Promise.all([
         loadSchemaFromKv(orgId, sObjectForQuery, c.env.TENANT_KV),
         loadFieldTypesFromKv(orgId, sObjectForQuery, c.env.TENANT_KV),
@@ -1466,6 +1516,30 @@ app.post('/v1/grammar-rules-seed', async (c) => {
   const merged = { ...DEFAULT_GRAMMAR_RULES, ...body };
   await c.env.TENANT_KV.put('soql_sosl_grammar_rules', JSON.stringify(merged), { expirationTtl: 86400 });
   return c.json({ ok: true });
+});
+
+// ── /v1/datacloud-catalog-seed — Data Cloud DMO/DLO metadata ─────────────────
+// Apex seeds the org's Data Cloud object catalog so the Worker can detect DC
+// objects and route to the ANSI SQL compiler instead of SOQL.
+// Catalog keyed by object API name (e.g. "ssot__Individual__dlm").
+
+interface DataCloudCatalogSeedRequest {
+  catalog: Record<string, DataCloudObjectMeta>;  // apiName → { label, type, fields, relationships }
+}
+
+app.post('/v1/datacloud-catalog-seed', async (c) => {
+  let body: DataCloudCatalogSeedRequest;
+  try { body = await c.req.json<DataCloudCatalogSeedRequest>(); }
+  catch { return c.json({ error: 'Invalid JSON body' }, 400); }
+
+  if (!body.catalog || typeof body.catalog !== 'object') {
+    return c.json({ error: 'catalog object required' }, 400);
+  }
+  const orgId = c.req.raw.headers.get('X-Salesforce-Org-Id');
+  if (!orgId) return c.json({ error: 'X-Salesforce-Org-Id header required' }, 400);
+
+  await cacheDataCloudCatalogInKv(orgId, body.catalog, c.env.TENANT_KV);
+  return c.json({ ok: true, cached: Object.keys(body.catalog).length });
 });
 
 // ── /v1/translate-rule — convert raw DML error into friendly guidance ────────
