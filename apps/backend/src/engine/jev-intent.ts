@@ -341,3 +341,114 @@ export function buildSoqlFilterFromJev(
     source:    'jev-template',
   };
 }
+
+// ── Standard sObject synonym map ──────────────────────────────────────────────
+// Japanese business synonyms → Salesforce API names.
+// These are seeded by the Worker and extended by org-specific KV entries.
+export const STANDARD_SYNONYM_MAP: Record<string, string> = {
+  // Account
+  '取引先': 'Account',  '顧客': 'Account',   '会社': 'Account',
+  'クライアント': 'Account', '法人': 'Account', '企業': 'Account', '得意先': 'Account',
+  // Contact
+  '連絡先': 'Contact',  '取引先責任者': 'Contact', '担当者': 'Contact',
+  '個人': 'Contact',   'コンタクト': 'Contact',
+  // Opportunity
+  '商談': 'Opportunity', '案件': 'Opportunity', '売上': 'Opportunity',
+  '受注': 'Opportunity', 'オポチュニティ': 'Opportunity', '取引': 'Opportunity',
+  '提案': 'Opportunity',
+  // Lead
+  'リード': 'Lead', '見込み客': 'Lead', '見込み': 'Lead',
+  '問い合わせ': 'Lead', 'リード候補': 'Lead', '見込客': 'Lead',
+  // Case
+  'ケース': 'Case', 'チケット': 'Case', 'サポート': 'Case',
+  'サポートケース': 'Case', 'クレーム': 'Case', '問い合わせ票': 'Case',
+  // Campaign
+  'キャンペーン': 'Campaign',
+  // Task
+  '行動': 'Task', 'タスク': 'Task', '予定': 'Task', 'アクション': 'Task',
+};
+
+// Common Japanese field name → Salesforce API name mappings for RECORD_UPDATE.
+export const FIELD_SYNONYM_MAP: Record<string, string> = {
+  'フェーズ': 'StageName', 'ステージ': 'StageName', '商談フェーズ': 'StageName',
+  '金額': 'Amount', '予算': 'Amount', '受注金額': 'Amount', '案件金額': 'Amount',
+  'クローズ日': 'CloseDate', '完了日': 'CloseDate', '契約予定日': 'CloseDate',
+  '次のステップ': 'NextStep', 'ネクストステップ': 'NextStep',
+  '説明': 'Description', '備考': 'Description',
+  '担当者': 'OwnerId',
+  '優先度': 'Priority',
+  'ステータス': 'Status',
+  '電話': 'Phone',
+  'メール': 'Email',
+  'ウェブサイト': 'Website',
+};
+
+// ── Simple RECORD_UPDATE extractor ────────────────────────────────────────────
+// Handles Japanese patterns: "XのFieldをValueに変更/設定/更新"
+// Returns { fieldApiName: parsedValue } or null if pattern not matched.
+
+export interface SimpleUpdateResult {
+  fields:     Record<string, unknown>;
+  sObject:    string | null;
+  searchName: string | null;  // Record name to look up (if present)
+}
+
+export function extractSimpleUpdate(
+  userInput: string,
+  sObjectContext: string | null,
+  validFields: Set<string>
+): SimpleUpdateResult | null {
+  // Pattern: "[record名] の [field] を [value] に[変更|設定|更新|して]"
+  // e.g. "A社の金額を1000万に変更", "StageName を Closed Won に設定"
+  const jaMatch = userInput.match(
+    /^(.+?)(?:の|：|:)\s*(.+?)\s*を\s*(.+?)\s*(?:に変更|に設定|に更新|に修正|として保存|にして|に直して|にする)/i
+  );
+
+  // Simpler pattern without record name: "フェーズを Closed Won に変更"
+  const jaSimple = !jaMatch
+    ? userInput.match(/^(.+?)\s*を\s*(.+?)\s*(?:に変更|に設定|に更新|に修正|として保存|にして|に直して|にする)/i)
+    : null;
+
+  if (!jaMatch && !jaSimple) return null;
+
+  let searchName: string | null = null;
+  let fieldRaw: string;
+  let valueRaw: string;
+
+  if (jaMatch) {
+    const candidate = jaMatch[1].trim();
+    fieldRaw  = jaMatch[2].trim();
+    valueRaw  = jaMatch[3].trim();
+    // Only treat as a record name if it's not itself a field synonym
+    if (!FIELD_SYNONYM_MAP[candidate] && !validFields.has(candidate)) {
+      searchName = candidate;
+    } else {
+      fieldRaw = candidate;  // was actually the field name
+      valueRaw = jaMatch[2].trim();
+    }
+  } else {
+    fieldRaw = jaSimple![1].trim();
+    valueRaw = jaSimple![2].trim();
+  }
+
+  const apiField = FIELD_SYNONYM_MAP[fieldRaw] ?? fieldRaw;
+
+  // If we have a valid field list, reject unknown fields
+  if (validFields.size > 0 && !validFields.has(apiField)) return null;
+
+  // Parse value: amount > date > raw string
+  let parsedValue: unknown = valueRaw;
+  if (/amount|revenue|金額|予算/i.test(apiField)) {
+    const amountVal = extractAmountValue(valueRaw);
+    if (amountVal !== null) parsedValue = amountVal;
+  } else if (/date|日/i.test(apiField)) {
+    const dateLit = extractDateLiteral(valueRaw);
+    if (dateLit) parsedValue = dateLit;
+  }
+
+  return {
+    fields:     { [apiField]: parsedValue },
+    sObject:    sObjectContext,
+    searchName,
+  };
+}

@@ -16,11 +16,23 @@ import {
   IS_INACTIVE_QUERY,
   buildSObjectQuestion,
   buildSoqlFilterFromJev,
+  extractSimpleUpdate,
   getChoiceAnswer,
   getNoulAnswer,
+  STANDARD_SYNONYM_MAP,
   type JevIntent,
   type CustomSObjectEntry,
 } from './engine/jev-intent.js';
+
+import {
+  compileQuery,
+  shouldUseSosl,
+  DEFAULT_GRAMMAR_RULES,
+  type GrammarRules,
+  type FieldTypeSchema,
+  type ChildRelationship,
+  type CompilerInput,
+} from './engine/soqlCompiler.js';
 
 interface CfAiTextInput {
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
@@ -396,6 +408,45 @@ async function cacheSchemaInKv(orgId: string, sObject: string, fields: string[],
   await kv.put(`schema:${orgId}:${sObject}`, JSON.stringify(fields), { expirationTtl: SCHEMA_KV_TTL });
 }
 
+// ── Field type + relationship KV helpers ──────────────────────────────────────
+// Apex seeds per-sObject field descriptors (type + relationshipName + referenceTo)
+// and childRelationships so the SOQL compiler can validate and construct
+// cross-object fields and nested subqueries without calling Salesforce.
+
+async function loadFieldTypesFromKv(orgId: string, sObject: string, kv: KVNamespace | undefined): Promise<FieldTypeSchema> {
+  if (!kv) return {};
+  try {
+    const cached = (await kv.get(`ftypes:${orgId}:${sObject}`, 'json')) as FieldTypeSchema | null;
+    return cached && typeof cached === 'object' ? cached : {};
+  } catch { return {}; }
+}
+
+async function cacheFieldTypesInKv(orgId: string, sObject: string, schema: FieldTypeSchema, kv: KVNamespace | undefined): Promise<void> {
+  if (!kv || Object.keys(schema).length === 0) return;
+  await kv.put(`ftypes:${orgId}:${sObject}`, JSON.stringify(schema), { expirationTtl: SCHEMA_KV_TTL });
+}
+
+async function loadChildRelsFromKv(orgId: string, sObject: string, kv: KVNamespace | undefined): Promise<Record<string, ChildRelationship>> {
+  if (!kv) return {};
+  try {
+    const cached = (await kv.get(`crels:${orgId}:${sObject}`, 'json')) as Record<string, ChildRelationship> | null;
+    return cached && typeof cached === 'object' ? cached : {};
+  } catch { return {}; }
+}
+
+async function cacheChildRelsInKv(orgId: string, sObject: string, rels: Record<string, ChildRelationship>, kv: KVNamespace | undefined): Promise<void> {
+  if (!kv || Object.keys(rels).length === 0) return;
+  await kv.put(`crels:${orgId}:${sObject}`, JSON.stringify(rels), { expirationTtl: SCHEMA_KV_TTL });
+}
+
+async function loadGrammarRulesFromKv(kv: KVNamespace | undefined): Promise<GrammarRules> {
+  if (!kv) return DEFAULT_GRAMMAR_RULES;
+  try {
+    const cached = (await kv.get('soql_sosl_grammar_rules', 'json')) as GrammarRules | null;
+    return cached ?? DEFAULT_GRAMMAR_RULES;
+  } catch { return DEFAULT_GRAMMAR_RULES; }
+}
+
 // ── Custom sObject KV helpers ──────────────────────────────────────────────────
 // Apex seeds the org's custom object list once per session.
 // Worker uses it to build dynamic Jev Choice criteria at classification time.
@@ -413,21 +464,53 @@ async function cacheCustomSObjectsInKv(orgId: string, objects: CustomSObjectEntr
   await kv.put(`sobjects:${orgId}`, JSON.stringify(objects), { expirationTtl: SCHEMA_KV_TTL });
 }
 
+// ── Synonym KV helpers ─────────────────────────────────────────────────────────
+// Apex can seed org-specific synonym aliases (e.g. "注文" → "Purchase_Order__c")
+// into KV so the Worker resolves them before the lexical keyword scan.
+
+async function loadSynonymsFromKv(orgId: string, kv: KVNamespace | undefined): Promise<Record<string, string>> {
+  if (!kv) return {};
+  try {
+    const cached = (await kv.get(`synonyms:${orgId}`, 'json')) as Record<string, string> | null;
+    return cached && typeof cached === 'object' ? cached : {};
+  } catch { return {}; }
+}
+
+async function cacheSynonymsInKv(orgId: string, synonyms: Record<string, string>, kv: KVNamespace | undefined): Promise<void> {
+  if (!kv || Object.keys(synonyms).length === 0) return;
+  await kv.put(`synonyms:${orgId}`, JSON.stringify(synonyms), { expirationTtl: SCHEMA_KV_TTL });
+}
+
 // ── sObject keyword fallback for Jev 'Other' answers ─────────────────────────
-// Scans the full KV-cached custom object catalog (up to 200) when Jev's 12-item
-// Choice returns 'Other'. Checks API name stem, singular label, and plural label
-// against the lowercased user input. First match wins; returns null if none.
+// Resolution order:
+//   1. STANDARD_SYNONYM_MAP (hardcoded standard-object JP aliases)
+//   2. KV org-specific synonyms (seeded by Apex via /v1/synonyms-seed)
+//   3. Lexical scan of full custom-object catalog (apiStem, label, pluralLabel)
+// First match wins; returns null if nothing found.
 
 function matchSObjectByKeyword(
   userInput: string,
-  allObjects: CustomSObjectEntry[]
+  allObjects: CustomSObjectEntry[],
+  orgSynonyms: Record<string, string> = {}
 ): string | null {
-  if (allObjects.length === 0) return null;
   const lower = userInput.toLowerCase();
+
+  // 1. Standard synonym map (word boundary check for short terms to avoid false positives)
+  for (const [synonym, apiName] of Object.entries(STANDARD_SYNONYM_MAP)) {
+    if (synonym.length >= 3 && lower.includes(synonym.toLowerCase())) return apiName;
+  }
+
+  // 2. Org-specific KV synonyms
+  for (const [synonym, apiName] of Object.entries(orgSynonyms)) {
+    if (lower.includes(synonym.toLowerCase())) return apiName;
+  }
+
+  // 3. Lexical scan of full custom-object catalog
+  if (allObjects.length === 0) return null;
   for (const obj of allObjects) {
-    const apiStem    = obj.apiName.toLowerCase().replace(/__c$/, '').replace(/_/g, ' ');
-    const labelLow   = obj.label.toLowerCase();
-    const pluralLow  = obj.pluralLabel.toLowerCase();
+    const apiStem   = obj.apiName.toLowerCase().replace(/__c$/, '').replace(/_/g, ' ');
+    const labelLow  = obj.label.toLowerCase();
+    const pluralLow = obj.pluralLabel.toLowerCase();
     if (lower.includes(apiStem) || lower.includes(labelLow) || lower.includes(pluralLow)) {
       return obj.apiName;
     }
@@ -453,7 +536,8 @@ async function classifyWithJev(
   c: Parameters<typeof app.post>[1] & { env: Env },
   userInput: string,
   sObjectContext: string | null,
-  customObjects: CustomSObjectEntry[] = []
+  customObjects: CustomSObjectEntry[] = [],
+  orgSynonyms: Record<string, string> = {}
 ): Promise<JevClassifyResult> {
   const state = JSON.stringify({
     user_input:       userInput,
@@ -500,9 +584,9 @@ async function classifyWithJev(
   const hasDateAns = getNoulAnswer(answers,   'has_date');
   const inactiveAns = getNoulAnswer(answers,  'is_inactive');
 
-  // When Jev answers 'Other', try keyword scan of the full KV catalog before giving up.
+  // When Jev answers 'Other', try synonym map + keyword scan before giving up.
   const jevSObject = sObjAns?.choice !== 'Other' ? (sObjAns?.choice ?? null) : null;
-  const resolvedSObject = jevSObject ?? matchSObjectByKeyword(userInput, customObjects);
+  const resolvedSObject = jevSObject ?? matchSObjectByKeyword(userInput, customObjects, orgSynonyms);
 
   return {
     intent:     (intentAns?.choice ?? 'UNKNOWN') as JevIntent,
@@ -977,21 +1061,59 @@ app.post('/v1/agent-action', async (c) => {
   const orgId = c.req.raw.headers.get('X-Salesforce-Org-Id') ?? 'anon';
 
   try {
-    const customObjects = await loadCustomSObjectsFromKv(orgId, c.env.TENANT_KV);
+    const [customObjects, orgSynonyms] = await Promise.all([
+      loadCustomSObjectsFromKv(orgId, c.env.TENANT_KV),
+      loadSynonymsFromKv(orgId, c.env.TENANT_KV),
+    ]);
     const jev = await classifyWithJev(
       c as Parameters<typeof app.post>[1] & { env: Env },
       body.user_input,
       body.sObjectType ?? null,
-      customObjects
+      customObjects,
+      orgSynonyms
     );
 
+    const effectiveSObject = jev.sObject ?? body.sObjectType ?? null;
+
+    // ── SOQL_SEARCH / SOSL fast-route ─────────────────────────────────────
     if (jev.intent === 'SOQL_SEARCH' && jev.confidence >= 0.72) {
-      // Load schema allowlist from KV (empty set = skip field validation)
-      const validFields = await loadSchemaFromKv(orgId, jev.sObject ?? 'Account', c.env.TENANT_KV);
+      const sObjectForQuery = effectiveSObject ?? 'Account';
+      const [validFields, fieldTypes, childRels, grammar] = await Promise.all([
+        loadSchemaFromKv(orgId, sObjectForQuery, c.env.TENANT_KV),
+        loadFieldTypesFromKv(orgId, sObjectForQuery, c.env.TENANT_KV),
+        loadChildRelsFromKv(orgId, sObjectForQuery, c.env.TENANT_KV),
+        loadGrammarRulesFromKv(c.env.TENANT_KV),
+      ]);
+
+      // Check if SOSL is more appropriate (cross-object / no sObject resolved)
+      if (shouldUseSosl(body.user_input, effectiveSObject, grammar)) {
+        const soslInput: CompilerInput = {
+          intent:   'SOSL_SEARCH',
+          sObject:  null,
+          conditions: [],
+          soslTerm: body.user_input,
+          soslGroup: 'ALL FIELDS',
+          limit:    body.field_schema?.length ? 10 : 20,
+        };
+        const compiled = compileQuery(soslInput, validFields, fieldTypes, childRels, grammar);
+        const sObjectLabel = JA_SOBJECT_LABEL[effectiveSObject ?? ''] ?? effectiveSObject ?? '全体';
+        const response: AgentActionResponse = {
+          intent:   'SOQL_SEARCH',
+          message:  isJaLang ? `${sObjectLabel}を横断検索…` : 'Searching across objects…',
+          search_sobject: effectiveSObject ?? undefined,
+          soql_filter:    { conditions: [], order_by: '', limit: 20 },
+          fields:         {},
+          ...(compiled.query ? { search_query: compiled.query } : {}),
+        };
+        if (tenant?.config?.aiCredits) {
+          (response as Record<string, unknown>).remaining_credits = tenant.config.aiCredits.remaining;
+        }
+        return c.json(response);
+      }
 
       const built = buildSoqlFilterFromJev(
         body.user_input,
-        jev.sObject ?? body.sObjectType ?? null,
+        effectiveSObject,
         {
           intentAnswer:  { type: 'choice', choice: 'SOQL_SEARCH', confidence: jev.confidence, probabilities: {} },
           sObjectAnswer: jev.sObject ? { type: 'choice', choice: jev.sObject, confidence: jev.confidence, probabilities: {} } : null,
@@ -1003,6 +1125,17 @@ app.post('/v1/agent-action', async (c) => {
       );
 
       if (built) {
+        // Run conditions through the SOQL compiler for field-type validation
+        // and non-filterable field stripping.
+        const compilerInput: CompilerInput = {
+          intent:     'SOQL_SEARCH',
+          sObject:    built.sObject,
+          conditions: built.filter.conditions as CompilerInput['conditions'],
+          orderBy:    built.filter.order_by,
+          limit:      built.filter.limit,
+        };
+        const compiled = compileQuery(compilerInput, validFields, fieldTypes, childRels, grammar);
+
         const sObjectLabel = JA_SOBJECT_LABEL[built.sObject] ?? built.sObject;
         const msg = isJaLang
           ? `${sObjectLabel}を検索しています…`
@@ -1012,20 +1145,58 @@ app.post('/v1/agent-action', async (c) => {
           intent:         'SOQL_SEARCH',
           message:        msg,
           search_sobject: built.sObject,
-          soql_filter:    built.filter,
+          soql_filter:    built.filter,   // structured conditions for LWC re-use
           fields:         {},
+          // Compiled validated SOQL string surfaced for Apex direct execution
+          ...(compiled.query ? { search_query: compiled.query } : {}),
+          ...(compiled.warnings.length ? { warnings: compiled.warnings } : {}),
         };
-
         if (tenant?.config?.aiCredits) {
           (response as Record<string, unknown>).remaining_credits = tenant.config.aiCredits.remaining;
         }
-
         return c.json(response);
       }
     }
 
-    // REPORT_EXPLAIN → pass through to LLM with focused prompt (rare, needs context)
-    // RECORD_UPDATE / NAVIGATE / etc. → full LLM handles complex field mapping
+    // ── NAVIGATE fast-route ────────────────────────────────────────────────
+    // List-view navigation: "〇〇一覧を開いて", "〇〇リストを表示"
+    if (jev.intent === 'NAVIGATE' && jev.confidence >= 0.72 && effectiveSObject) {
+      const sObjectLabel = JA_SOBJECT_LABEL[effectiveSObject] ?? effectiveSObject;
+      const response: AgentActionResponse = {
+        intent:         'NAVIGATE',
+        message:        isJaLang ? `${sObjectLabel}一覧を開きます` : `Opening ${effectiveSObject} list`,
+        target_sobject: effectiveSObject,
+        fields:         {},
+      };
+      if (tenant?.config?.aiCredits) {
+        (response as Record<string, unknown>).remaining_credits = tenant.config.aiCredits.remaining;
+      }
+      return c.json(response);
+    }
+
+    // ── RECORD_UPDATE fast-route ───────────────────────────────────────────
+    // Simple single-field update: "フェーズを Closed Won に変更" (current record context)
+    if ((jev.intent === 'RECORD_UPDATE') && jev.confidence >= 0.72) {
+      const validFields = await loadSchemaFromKv(orgId, effectiveSObject ?? '', c.env.TENANT_KV);
+      const upd = extractSimpleUpdate(body.user_input, effectiveSObject, validFields);
+
+      if (upd && Object.keys(upd.fields).length > 0) {
+        const response: AgentActionResponse = {
+          intent:       'UPDATE_RECORD',
+          message:      isJaLang ? '項目を更新します' : 'Updating record field',
+          sObjectType:  upd.sObject ?? undefined,
+          fields:       upd.fields,
+          should_save:  false,    // LWC shows prefill card; user confirms before DML
+          ...(upd.searchName ? { search_name: upd.searchName, search_sobject: upd.sObject ?? undefined } : {}),
+        };
+        if (tenant?.config?.aiCredits) {
+          (response as Record<string, unknown>).remaining_credits = tenant.config.aiCredits.remaining;
+        }
+        return c.json(response);
+      }
+    }
+
+    // REPORT_EXPLAIN → pass through to LLM (rare, needs full context)
   } catch {
     // Jev classification failed → fall through to full LLM silently
   }
@@ -1211,6 +1382,90 @@ app.post('/v1/sobjects-seed', async (c) => {
 
   await cacheCustomSObjectsInKv(orgId, body.objects, c.env.TENANT_KV);
   return c.json({ ok: true, cached: body.objects.length });
+});
+
+// ── /v1/synonyms-seed — org-specific JP synonym → API name mapping ────────────
+// Apex or admin seeds aliases for custom objects / non-standard JP label usage.
+// e.g. { "注文": "Purchase_Order__c", "プロジェクト": "Project__c" }
+// Merged with STANDARD_SYNONYM_MAP at classification time; TTL 1 hour.
+
+interface SynonymsSeedRequest {
+  synonyms: Record<string, string>;  // { jpAlias: 'SObject_API_Name__c' }
+}
+
+app.post('/v1/synonyms-seed', async (c) => {
+  let body: SynonymsSeedRequest;
+  try { body = await c.req.json<SynonymsSeedRequest>(); }
+  catch { return c.json({ error: 'Invalid JSON body' }, 400); }
+
+  if (!body.synonyms || typeof body.synonyms !== 'object') {
+    return c.json({ error: 'synonyms object required' }, 400);
+  }
+
+  const orgId = c.req.raw.headers.get('X-Salesforce-Org-Id');
+  if (!orgId) return c.json({ error: 'X-Salesforce-Org-Id header required' }, 400);
+
+  await cacheSynonymsInKv(orgId, body.synonyms, c.env.TENANT_KV);
+  return c.json({ ok: true, cached: Object.keys(body.synonyms).length });
+});
+
+// ── /v1/field-types-seed — field descriptors with type + relationship info ────
+// Apex seeds the enriched field schema (type + relationshipName + referenceTo)
+// so the SOQL compiler can validate field types and resolve parent-lookup paths.
+
+interface FieldTypesSeedRequest {
+  sObjectType: string;
+  fields:      FieldTypeSchema;  // { "ApiName": { type, filterable, relationshipName, referenceTo } }
+}
+
+app.post('/v1/field-types-seed', async (c) => {
+  let body: FieldTypesSeedRequest;
+  try { body = await c.req.json<FieldTypesSeedRequest>(); }
+  catch { return c.json({ error: 'Invalid JSON body' }, 400); }
+
+  if (!body.sObjectType || !body.fields) return c.json({ error: 'sObjectType and fields required' }, 400);
+  const orgId = c.req.raw.headers.get('X-Salesforce-Org-Id');
+  if (!orgId) return c.json({ error: 'X-Salesforce-Org-Id header required' }, 400);
+
+  await cacheFieldTypesInKv(orgId, body.sObjectType, body.fields, c.env.TENANT_KV);
+  return c.json({ ok: true, cached: Object.keys(body.fields).length });
+});
+
+// ── /v1/child-rels-seed — child relationship metadata for nested SOQL ─────────
+// Apex seeds childRelationships (relationshipName → childObject + field) so the
+// SOQL compiler can emit validated Parent-to-Child nested subqueries.
+
+interface ChildRelsSeedRequest {
+  sObjectType:        string;
+  childRelationships: Record<string, ChildRelationship>;  // relName → { childObject, field }
+}
+
+app.post('/v1/child-rels-seed', async (c) => {
+  let body: ChildRelsSeedRequest;
+  try { body = await c.req.json<ChildRelsSeedRequest>(); }
+  catch { return c.json({ error: 'Invalid JSON body' }, 400); }
+
+  if (!body.sObjectType || !body.childRelationships) return c.json({ error: 'sObjectType and childRelationships required' }, 400);
+  const orgId = c.req.raw.headers.get('X-Salesforce-Org-Id');
+  if (!orgId) return c.json({ error: 'X-Salesforce-Org-Id header required' }, 400);
+
+  await cacheChildRelsInKv(orgId, body.sObjectType, body.childRelationships, c.env.TENANT_KV);
+  return c.json({ ok: true, cached: Object.keys(body.childRelationships).length });
+});
+
+// ── /v1/grammar-rules-seed — SOQL/SOSL structural rules (global, not per-org) ─
+// Allows the Apex admin tool to update date literals, non-filterable types,
+// and SOSL returning defaults without a Worker redeploy.
+
+app.post('/v1/grammar-rules-seed', async (c) => {
+  let body: Partial<GrammarRules>;
+  try { body = await c.req.json<Partial<GrammarRules>>(); }
+  catch { return c.json({ error: 'Invalid JSON body' }, 400); }
+
+  if (!c.env.TENANT_KV) return c.json({ error: 'KV not configured' }, 500);
+  const merged = { ...DEFAULT_GRAMMAR_RULES, ...body };
+  await c.env.TENANT_KV.put('soql_sosl_grammar_rules', JSON.stringify(merged), { expirationTtl: 86400 });
+  return c.json({ ok: true });
 });
 
 // ── /v1/translate-rule — convert raw DML error into friendly guidance ────────
