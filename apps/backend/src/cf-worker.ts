@@ -1114,7 +1114,10 @@ app.post('/v1/agent-action', async (c) => {
     const effectiveSObject = jev.sObject ?? body.sObjectType ?? null;
 
     // ── SOQL_SEARCH / SOSL / Data Cloud fast-route ────────────────────────
-    if (jev.intent === 'SOQL_SEARCH' && jev.confidence >= 0.72) {
+    // Threshold 0.85: below this, full LLM is used with field_schema context
+    // so the model can dynamically pick the correct date/amount field for any
+    // sObject (including custom objects) rather than relying on hard-coded maps.
+    if (jev.intent === 'SOQL_SEARCH' && jev.confidence >= 0.85) {
       const sObjectForQuery = effectiveSObject ?? 'Account';
       const queryEngine = detectQueryEngine(sObjectForQuery);
 
