@@ -253,8 +253,13 @@ async function resolveTenant(
     }
   }
 
-  // Detect Developer Sandbox orgs (15-char ID starting with 00D, instance pattern)
-  const isDevSandbox = /^00D[a-zA-Z0-9]{9}(sand|dev|scratch)/i.test(orgId);
+  // Detect Developer / Sandbox orgs.
+  // The org-ID pattern alone is unreliable (15-char IDs never embed "dev"/"sand").
+  // Cross-check with the instance URL header sent by Apex (System.Url.getOrgDomainUrl).
+  const instanceUrl = req.headers.get('X-Salesforce-Instance-Url') ?? '';
+  const isDevSandbox = /^00D[a-zA-Z0-9]{9}(sand|dev|scratch)/i.test(orgId)
+    || /\.(develop|sandbox|scratch|partial|trailblaze|demo)\./i.test(instanceUrl)
+    || /\.cloudforce\.com/i.test(instanceUrl);
 
   // Load tenant config from KV, auto-provision on first request
   let config: TenantConfig | null = null;
@@ -270,6 +275,13 @@ async function resolveTenant(
           ? { totalGranted: 999999, remaining: 999999, resetDate: '2099-01-01T00:00:00Z' }
           : { totalGranted: FREE_TRIAL_CREDITS, remaining: FREE_TRIAL_CREDITS, resetDate: nextMonthIso() },
       };
+      ctx.waitUntil(env.TENANT_KV.put(`tenant:${orgId}`, JSON.stringify(config)));
+    } else if (isDevSandbox && config.plan === 'FREE_TRIAL') {
+      // Promote stale FREE_TRIAL configs when instance URL now reveals this is a dev/sandbox org.
+      // This fixes the case where the config was provisioned before the instance URL header was sent.
+      config.plan     = 'DEV_SANDBOX';
+      config.aiCredits = { totalGranted: 999999, remaining: 999999, resetDate: '2099-01-01T00:00:00Z' };
+      config.features  = { ...config.features, selfLearningKnowledge: true };
       ctx.waitUntil(env.TENANT_KV.put(`tenant:${orgId}`, JSON.stringify(config)));
     }
 
@@ -764,6 +776,8 @@ NAVIGATE_SETUP examples (Japanese):
 
 SOQL_SEARCH examples (Japanese):
 "先月作成した1000万以上の商談" (Opportunity context) → {"intent":"SOQL_SEARCH","search_sobject":"Opportunity","soql_filter":{"conditions":[{"field":"Amount","op":"gte","value":10000000},{"field":"CreatedDate","op":"eq","value":"LAST_MONTH"}],"order_by":"Amount DESC","limit":20},"message":"先月作成した1,000万以上の商談を検索します","fields":{}}
+"今月完了予定の商談" (Opportunity context) → {"intent":"SOQL_SEARCH","search_sobject":"Opportunity","soql_filter":{"conditions":[{"field":"CloseDate","op":"eq","value":"THIS_MONTH"}],"order_by":"CloseDate ASC","limit":20},"message":"今月完了予定の商談を検索します","fields":{}}
+"来月クローズ予定の案件" (Opportunity context) → {"intent":"SOQL_SEARCH","search_sobject":"Opportunity","soql_filter":{"conditions":[{"field":"CloseDate","op":"eq","value":"NEXT_MONTH"}],"order_by":"CloseDate ASC","limit":20},"message":"来月クローズ予定の商談を検索します","fields":{}}
 "放置されている案件" (Opportunity context) → {"intent":"SOQL_SEARCH","search_sobject":"Opportunity","soql_filter":{"conditions":[{"field":"IsClosed","op":"eq","value":false},{"field":"LastActivityDate","op":"lt","value":"LAST_N_DAYS:14"}],"order_by":"LastActivityDate ASC","limit":20},"message":"14日以上活動のない商談を検索します","fields":{}}
 "show recent opportunities" → {"intent":"SOQL_SEARCH","search_sobject":"Opportunity","soql_filter":{"conditions":[{"field":"CreatedDate","op":"gte","value":"LAST_N_DAYS:30"}],"order_by":"CreatedDate DESC","limit":20},"message":"Recently created opportunities","fields":{}}
 "show recently created leads" → {"intent":"SOQL_SEARCH","search_sobject":"Lead","soql_filter":{"conditions":[{"field":"CreatedDate","op":"gte","value":"LAST_N_DAYS:30"}],"order_by":"CreatedDate DESC","limit":20},"message":"Recently created leads","fields":{}}

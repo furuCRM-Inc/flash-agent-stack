@@ -37,9 +37,9 @@ export const INTENT_QUESTION: ChoiceQuestion = {
 // Base standard-object criteria — always present regardless of org.
 // Custom objects are injected at runtime via buildSObjectQuestion().
 export const STANDARD_SOBJECT_CRITERIA: Record<string, string> = {
-  Account:     'Company, client, customer, 取引先, 顧客',
+  Account:     'Company, client, customer, 取引先, 顧客 — choose ONLY when the user wants Account records directly, NOT when 取引先 names a parent (e.g. "X取引先の商談" targets Opportunity)',
   Contact:     'Person, contact, 連絡先, 取引先責任者',
-  Opportunity: 'Deal, sale, pipeline, opportunity, 商談, 案件',
+  Opportunity: 'Deal, sale, pipeline, opportunity, 商談, 案件 — also choose when user asks for 商談/案件 of a named 取引先 (e.g. "X取引先の商談", "X社の全商談")',
   Lead:        'Lead, prospect, inquiry, リード, 見込み客',
   Case:        'Case, ticket, support issue, ケース, サポート',
 };
@@ -204,6 +204,24 @@ export function extractLimit(text: string): number {
   return 20;
 }
 
+// Detects "X取引先の商談" patterns — user wants Opportunities for a named Account.
+// "X取引先の全ての商談を見せて" → sObject=Opportunity, Account.Name LIKE '%X%'
+function extractParentAccountContext(text: string): { accountName: string } | null {
+  // "Dickenson plc取引先の(全ての)?商談/案件/売上/受注"
+  const m1 = text.match(/(.+?)取引先の(?:全て|すべて)?の?(?:商談|案件|売上|受注|オポチュニティ)/);
+  if (m1) {
+    const name = m1[1].trim();
+    if (name.length >= 2) return { accountName: name };
+  }
+  // "Dickenson plcという取引先の商談"
+  const m2 = text.match(/(.+?)という取引先の(?:全て|すべて)?の?(?:商談|案件)/);
+  if (m2) {
+    const name = m2[1].trim();
+    if (name.length >= 2) return { accountName: name };
+  }
+  return null;
+}
+
 // Detects "closed/won/lost" stage filters for Opportunity.
 function extractStageFilter(text: string): SoqlCondition | null {
   if (/(?:クローズ済|closed\s+won|受注|Closed Won)/i.test(text)) {
@@ -268,15 +286,35 @@ export function buildSoqlFilterFromJev(
 
   const conditions: SoqlCondition[] = [];
 
+  // ── Parent-account context: "X取引先の商談" → Account.Name filter ──
+  // sObject is already resolved to Opportunity by the LLM via updated criteria.
+  // This only extracts the account name for the WHERE condition.
+  const parentAccountCtx = extractParentAccountContext(userInput);
+  if (parentAccountCtx) {
+    conditions.push({ field: 'Account.Name', op: 'like', value: `%${parentAccountCtx.accountName}%` });
+  }
+
   // ── Date filter ───────────────────────────────────────────────────────────
   const hasDate = (answers.hasDate?.noul ?? 0) >= 0.55;
   if (hasDate) {
     const dateLiteral = extractDateLiteral(userInput);
     if (dateLiteral) {
-      const dateField = sObject === 'Opportunity' ? 'CloseDate' : 'CreatedDate';
+      // For Opportunity: "完了/close/期限/クローズ/due/deadline" → CloseDate; "作成/created/new" → CreatedDate
+      let dateField: string;
+      if (sObject === 'Opportunity') {
+        const lower = userInput.toLowerCase();
+        const isCreatedIntent = /作成|created|新規|added|new.*creat|creat.*new/.test(lower);
+        dateField = isCreatedIntent ? 'CreatedDate' : 'CloseDate';
+      } else {
+        dateField = 'CreatedDate';
+      }
+      // Named period literals (THIS_MONTH, LAST_WEEK …) use "eq" — matches the whole period.
+      // Parameterized literals (LAST_N_DAYS:30) use "gte" — a specific cutoff date.
+      const dateOp: SoqlCondition['op'] = /^(?:TODAY|YESTERDAY|TOMORROW|THIS_|LAST_WEEK$|LAST_MONTH$|LAST_QUARTER$|LAST_YEAR$|NEXT_)/.test(dateLiteral)
+        ? 'eq' : 'gte';
       // Validate field exists in schema cache
       if (validFields.size === 0 || validFields.has(dateField)) {
-        conditions.push({ field: dateField, op: 'gte', value: dateLiteral });
+        conditions.push({ field: dateField, op: dateOp, value: dateLiteral });
       }
     }
   }
@@ -372,7 +410,7 @@ export const STANDARD_SYNONYM_MAP: Record<string, string> = {
 export const FIELD_SYNONYM_MAP: Record<string, string> = {
   'フェーズ': 'StageName', 'ステージ': 'StageName', '商談フェーズ': 'StageName',
   '金額': 'Amount', '予算': 'Amount', '受注金額': 'Amount', '案件金額': 'Amount',
-  'クローズ日': 'CloseDate', '完了日': 'CloseDate', '契約予定日': 'CloseDate',
+  'クローズ日': 'CloseDate', '完了日': 'CloseDate', '契約予定日': 'CloseDate', '完了予定日': 'CloseDate', '完了予定': 'CloseDate',
   '次のステップ': 'NextStep', 'ネクストステップ': 'NextStep',
   '説明': 'Description', '備考': 'Description',
   '担当者': 'OwnerId',
