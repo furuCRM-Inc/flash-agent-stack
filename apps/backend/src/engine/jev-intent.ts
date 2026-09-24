@@ -123,16 +123,23 @@ export interface SoqlFilter {
 }
 
 // Japanese and English date keyword → SOQL date literal
+// NOTE: \b (word boundary) is ASCII-only in JavaScript — it does not work with Japanese
+// characters (which are \W non-word). Patterns mix English (\b-delimited) and Japanese
+// (no-\b) in separate alternations so Japanese keywords always match regardless of position.
 const DATE_KEYWORD_MAP: Array<{ pattern: RegExp; literal: string }> = [
-  { pattern: /\b(?:today|本日|今日)\b/i,                             literal: 'TODAY'        },
-  { pattern: /\b(?:this[\s_-]?week|今週)\b/i,                       literal: 'THIS_WEEK'    },
-  { pattern: /\b(?:last[\s_-]?week|先週)\b/i,                       literal: 'LAST_WEEK'    },
-  { pattern: /\b(?:this[\s_-]?month|今月|当月)\b/i,                 literal: 'THIS_MONTH'   },
-  { pattern: /\b(?:last[\s_-]?month|先月|前月)\b/i,                 literal: 'LAST_MONTH'   },
-  { pattern: /\b(?:this[\s_-]?year|今年|本年)\b/i,                  literal: 'THIS_YEAR'    },
-  { pattern: /\b(?:last[\s_-]?year|昨年|去年)\b/i,                  literal: 'LAST_YEAR'    },
-  { pattern: /\b(?:this[\s_-]?quarter|今四半期|今Q)\b/i,            literal: 'THIS_QUARTER' },
-  { pattern: /\b(?:last[\s_-]?quarter|前四半期|前Q)\b/i,            literal: 'LAST_QUARTER' },
+  { pattern: /\btoday\b|本日|今日/i,                                  literal: 'TODAY'        },
+  { pattern: /\bthis[\s_-]?week\b|今週/i,                            literal: 'THIS_WEEK'    },
+  { pattern: /\blast[\s_-]?week\b|先週/i,                            literal: 'LAST_WEEK'    },
+  { pattern: /\bnext[\s_-]?week\b|来週|翌週/i,                       literal: 'NEXT_WEEK'    },
+  { pattern: /\bthis[\s_-]?month\b|今月|当月/i,                      literal: 'THIS_MONTH'   },
+  { pattern: /\blast[\s_-]?month\b|先月|前月/i,                      literal: 'LAST_MONTH'   },
+  { pattern: /\bnext[\s_-]?month\b|来月|翌月/i,                      literal: 'NEXT_MONTH'   },
+  { pattern: /\bthis[\s_-]?year\b|今年|本年/i,                       literal: 'THIS_YEAR'    },
+  { pattern: /\blast[\s_-]?year\b|昨年|去年/i,                       literal: 'LAST_YEAR'    },
+  { pattern: /\bnext[\s_-]?year\b|来年|翌年/i,                       literal: 'NEXT_YEAR'    },
+  { pattern: /\bthis[\s_-]?quarter\b|今四半期|今Q/i,                 literal: 'THIS_QUARTER' },
+  { pattern: /\blast[\s_-]?quarter\b|前四半期|前Q/i,                 literal: 'LAST_QUARTER' },
+  { pattern: /\bnext[\s_-]?quarter\b|来四半期|翌Q/i,                 literal: 'NEXT_QUARTER' },
   { pattern: /(?:過去|直近|last)\s*7\s*日?(?:間|days?)?/i,          literal: 'LAST_N_DAYS:7'  },
   { pattern: /(?:過去|直近|last)\s*14\s*日?(?:間|days?)?/i,         literal: 'LAST_N_DAYS:14' },
   { pattern: /(?:過去|直近|last)\s*30\s*日?(?:間|days?)?/i,         literal: 'LAST_N_DAYS:30' },
