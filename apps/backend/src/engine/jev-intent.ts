@@ -243,6 +243,18 @@ function extractStageFilter(text: string): SoqlCondition | null {
   return null;
 }
 
+// Detects "closed/open" status filters for Case.
+// Uses IsClosed (boolean formula field) so it works regardless of custom Status picklist values.
+function extractCaseStatusFilter(text: string): SoqlCondition | null {
+  if (/\bclosed?\b|クローズ済?|解決済?|完了したケース?/.test(text)) {
+    return { field: 'IsClosed', op: 'eq', value: true };
+  }
+  if (/\bopen\b|未解決|未クローズ|オープンなケース?/.test(text)) {
+    return { field: 'IsClosed', op: 'eq', value: false };
+  }
+  return null;
+}
+
 // ── Main SOQL filter builder ───────────────────────────────────────────────────
 
 export interface JevAnswerSet {
@@ -302,9 +314,12 @@ export function buildSoqlFilterFromJev(
   }
 
   // ── Date filter ───────────────────────────────────────────────────────────
-  const hasDate = (answers.hasDate?.noul ?? 0) >= 0.55;
+  // Always apply when Jev signals a date filter (noul ≥ 0.55) OR when there is
+  // an explicit date literal in the text — covers compound queries like
+  // "今月クローズしたケース" where hasDate noul can be low despite 今月 being present.
+  const dateLiteral = extractDateLiteral(userInput);
+  const hasDate = (answers.hasDate?.noul ?? 0) >= 0.55 || dateLiteral !== null;
   if (hasDate) {
-    const dateLiteral = extractDateLiteral(userInput);
     if (dateLiteral) {
       // For Opportunity: "完了/close/期限/クローズ/due/deadline" → CloseDate; "作成/created/new" → CreatedDate
       let dateField: string;
@@ -355,6 +370,14 @@ export function buildSoqlFilterFromJev(
     const stageCondition = extractStageFilter(userInput);
     if (stageCondition && (validFields.size === 0 || validFields.has(stageCondition.field))) {
       conditions.push(stageCondition);
+    }
+  }
+
+  // ── Status filter (Case only) ──────────────────────────────────────────────
+  if (sObject === 'Case') {
+    const caseStatus = extractCaseStatusFilter(userInput);
+    if (caseStatus && (validFields.size === 0 || validFields.has(caseStatus.field))) {
+      conditions.push(caseStatus);
     }
   }
 

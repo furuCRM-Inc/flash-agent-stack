@@ -3,13 +3,14 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev":        "bun --watch src/index.ts",
-    "start":      "bun src/index.ts",
-    "build":      "bun build src/index.ts --outdir dist --target bun",
-    "build:cf":   "bun build src/cf-worker.ts --outdir dist --target browser --format esm",
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "build:cf": "bun build src/cf-worker.ts --outdir dist --target browser --format esm",
     "start:node": "node --experimental-specifier-resolution=node dist/index.js",
-    "deploy:cf":  "npx wrangler deploy",
-    "test":       "bun test"
+    "deploy:cf": "npx wrangler deploy",
+    "deploy:cf:prod": "npx wrangler deploy --env production",
+    "test": "vitest run"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.0",
@@ -20,6 +21,7 @@
     "@hono/node-server": "^2.1.1",
     "@types/node": "^22.0.0",
     "typescript": "^7.0.2",
+    "vitest": "^4.1.11",
     "wrangler": "^4.135.0"
   }
 }

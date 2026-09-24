@@ -782,6 +782,9 @@ SOQL_SEARCH examples (Japanese):
 "show recent opportunities" → {"intent":"SOQL_SEARCH","search_sobject":"Opportunity","soql_filter":{"conditions":[{"field":"CreatedDate","op":"gte","value":"LAST_N_DAYS:30"}],"order_by":"CreatedDate DESC","limit":20},"message":"Recently created opportunities","fields":{}}
 "show recently created leads" → {"intent":"SOQL_SEARCH","search_sobject":"Lead","soql_filter":{"conditions":[{"field":"CreatedDate","op":"gte","value":"LAST_N_DAYS:30"}],"order_by":"CreatedDate DESC","limit":20},"message":"Recently created leads","fields":{}}
 "show this week's accounts" → {"intent":"SOQL_SEARCH","search_sobject":"Account","soql_filter":{"conditions":[{"field":"CreatedDate","op":"gte","value":"THIS_WEEK"}],"order_by":"CreatedDate DESC","limit":20},"message":"Accounts created this week","fields":{}}
+"how many closed cases" → {"intent":"SOQL_SEARCH","search_sobject":"Case","soql_filter":{"conditions":[{"field":"IsClosed","op":"eq","value":true}],"order_by":"CreatedDate DESC","limit":20},"message":"Closed cases","fields":{}}
+"show open cases" → {"intent":"SOQL_SEARCH","search_sobject":"Case","soql_filter":{"conditions":[{"field":"IsClosed","op":"eq","value":false}],"order_by":"CreatedDate DESC","limit":20},"message":"Open cases","fields":{}}
+"クローズしたケース" → {"intent":"SOQL_SEARCH","search_sobject":"Case","soql_filter":{"conditions":[{"field":"IsClosed","op":"eq","value":true}],"order_by":"CreatedDate DESC","limit":20},"message":"クローズ済みのケースを検索します","fields":{}}
 ADD_FIELDS example:
 "電話番号と担当者も追加で見せて" (results already showing) → {"intent":"ADD_FIELDS","fields_to_add":["Phone","OwnerId"],"message":"電話番号と担当者を追加します","fields":{}}
 
@@ -995,6 +998,31 @@ export function tryFastRoute(req: AgentActionRequest): AgentActionResponse | nul
       search_sobject: sobj,
       soql_filter: {
         conditions: [{ field: 'CreatedDate', op: 'gte', value: timeLit }],
+        order_by: 'CreatedDate DESC',
+        limit: 20,
+      },
+      fields: {},
+    };
+  }
+
+  // ── SOQL_SEARCH: "show/list/how many [closed|open] cases" ─────────────────
+  // Handles status-based Case queries without LLM overhead.
+  const caseStatusMatch = lower.match(
+    /^(?:show(?:\s+me)?|list(?:\s+all)?|how\s+many)\s+(closed|open|escalated|pending)\s+(?:cases?|tickets?)/i
+  );
+  if (caseStatusMatch) {
+    const statusToken = caseStatusMatch[1].toLowerCase();
+    const isClosed    = statusToken === 'closed';
+    const isJa        = (req.userLanguage ?? 'en').startsWith('ja');
+    const msg         = isJa
+      ? (isClosed ? 'クローズ済みのケースを表示します' : 'オープンなケースを表示します')
+      : (isClosed ? 'Closed cases' : `${caseStatusMatch[1]} cases`);
+    return {
+      intent: 'SOQL_SEARCH',
+      message: msg,
+      search_sobject: 'Case',
+      soql_filter: {
+        conditions: [{ field: 'IsClosed', op: 'eq', value: isClosed }],
         order_by: 'CreatedDate DESC',
         limit: 20,
       },
@@ -1989,6 +2017,142 @@ Rules:
     return c.json(metadata);
   } catch (e) {
     return c.json({ error: `Generation failed: ${String(e)}` }, 502);
+  }
+});
+
+// ── Task 2: Case Triage — /api/jev/triage ────────────────────────────────────
+
+interface CaseTriageRequest {
+  caseId?:        string;
+  subject?:       string;
+  description?:   string;
+  accountSlaTier?: string;
+}
+
+app.post('/api/jev/triage', async (c) => {
+  let body: CaseTriageRequest;
+  try { body = await c.req.json() as CaseTriageRequest; }
+  catch { return c.json({ error: 'Invalid JSON' }, 400); }
+
+  const { subject = '', description = '', accountSlaTier = 'Standard' } = body;
+
+  const system = `You are a CRM support triage AI. Given a Salesforce Case, evaluate urgency and assign to the best support queue.
+Return ONLY valid JSON (no markdown, no code fences) matching exactly this structure:
+{
+  "status": "SUCCESS",
+  "confidence": <0.0–1.0>,
+  "score": {
+    "urgency":   <0.0–1.0>,
+    "churnRisk": <0.0–1.0>
+  },
+  "choice": {
+    "recommendedQueueDeveloperName": "<snake_case_api_name>",
+    "recommendedQueueLabel":         "<Human Readable Name>",
+    "reasoning": "<1–2 sentence explanation>"
+  },
+  "noul": {
+    "isImmediateEscalationRequired": <true|false>,
+    "confidence": <0.0–1.0>
+  }
+}
+SLA tiers: Gold (highest priority), Silver, Bronze, Standard (lowest).
+Escalation = true when urgency >= 0.85 AND SLA is Gold or Silver.`;
+
+  const prompt = `Case Subject: ${subject}
+Description: ${description}
+Account SLA Tier: ${accountSlaTier}`;
+
+  try {
+    const raw = await c.env.AI.run(MODEL, {
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user',   content: prompt },
+      ],
+      max_tokens: 512,
+      temperature: 0.1,
+    });
+    const out  = raw as { response?: unknown; choices?: Array<{ message?: { content?: string } }> };
+    const text = out.choices?.[0]?.message?.content ?? (typeof out.response === 'string' ? out.response : '{}');
+    const parsed = extractJson(text as string);
+    return c.json(parsed);
+  } catch (e) {
+    return c.json({ error: `Triage failed: ${String(e)}` }, 502);
+  }
+});
+
+// ── Task 3: Lead Qualification Batch — /api/jev/qualify-batch ─────────────────
+
+interface LeadQualifyRequest {
+  leads: Array<{
+    leadId:      string;
+    firstName?:  string;
+    lastName?:   string;
+    company?:    string;
+    title?:      string;
+    email?:      string;
+    annualRevenue?: number;
+    numberOfEmployees?: number;
+    industry?:   string;
+    leadSource?: string;
+    description?: string;
+  }>;
+}
+
+interface LeadScore {
+  leadId:     string;
+  icpScore:   number;
+  tier:       'HOT' | 'WARM' | 'COLD';
+  reasoning:  string;
+}
+
+app.post('/api/jev/qualify-batch', async (c) => {
+  let body: LeadQualifyRequest;
+  try { body = await c.req.json() as LeadQualifyRequest; }
+  catch { return c.json({ error: 'Invalid JSON' }, 400); }
+
+  const { leads } = body;
+  if (!Array.isArray(leads) || leads.length === 0) {
+    return c.json({ error: 'leads array is required' }, 400);
+  }
+
+  const system = `You are a B2B lead qualification AI. Score each lead for Ideal Customer Profile (ICP) fit.
+Return ONLY valid JSON (no markdown, no code fences):
+{
+  "status": "SUCCESS",
+  "scores": [
+    {
+      "leadId":    "<id>",
+      "icpScore":  <0.0–1.0>,
+      "tier":      "HOT" | "WARM" | "COLD",
+      "reasoning": "<1-sentence explanation>"
+    }
+  ]
+}
+Scoring guide:
+- HOT (0.75–1.0): Strong fit — decision-maker title, revenue >10M, SMB–Mid-market, relevant industry
+- WARM (0.50–0.74): Moderate fit — some signals present
+- COLD (0.0–0.49): Weak fit — missing key signals
+Use annualRevenue, numberOfEmployees, title, industry, leadSource as signals.`;
+
+  const leadsText = leads.map((l, i) =>
+    `Lead ${i + 1} (id: ${l.leadId}): ${l.firstName ?? ''} ${l.lastName ?? ''}, ${l.title ?? 'Unknown title'}, ${l.company ?? ''}, Revenue: ${l.annualRevenue ?? 'unknown'}, Employees: ${l.numberOfEmployees ?? 'unknown'}, Industry: ${l.industry ?? 'unknown'}, Source: ${l.leadSource ?? 'unknown'}`
+  ).join('\n');
+
+  try {
+    const raw = await c.env.AI.run(MODEL, {
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user',   content: `Score these leads:\n${leadsText}` },
+      ],
+      max_tokens: 1024,
+      temperature: 0.1,
+    });
+    const out  = raw as { response?: unknown; choices?: Array<{ message?: { content?: string } }> };
+    const text = out.choices?.[0]?.message?.content ?? (typeof out.response === 'string' ? out.response : '{}');
+    const parsed = extractJson(text as string);
+    return c.json(parsed);
+  } catch (e) {
+    return c.json({ error: `Qualification failed: ${String(e)}` }, 502);
   }
 });
 

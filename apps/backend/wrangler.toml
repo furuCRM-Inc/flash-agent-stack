@@ -3,17 +3,45 @@ main = "src/cf-worker.ts"
 compatibility_date = "2024-11-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Workers AI binding (free tier: 10,000 neurons/day)
+# ── Free-plan dev bindings ────────────────────────────────────────────────────
+# Deploy with: npm run deploy:cf  (or wrangler deploy)
+
 [ai]
 binding = "AI"
 
+[[kv_namespaces]]
+binding = "TENANT_KV"
+id = "19a0548d0cee4158840b3047e2f1c455"
+
 [vars]
-# Optional: add an API key here if you want to restrict access
-# FLASH_AGENT_SECRET = "your-secret-key"
+FREE_TIER_DAILY_LIMIT = "100"
+WORKER_BASE_URL = "https://flash-agent-stack.flash-agent-backend.workers.dev"
 
-# Routes (update after deployment)
-# [[routes]]
-# pattern = "flash-agent.your-domain.com/*"
-# zone_name = "your-domain.com"
+# ── Production / paid-plan env ────────────────────────────────────────────────
+# Deploy with: npm run deploy:cf:prod  (or wrangler deploy --env production)
+# Requires Cloudflare Workers Paid plan for:
+#   - RATE_LIMITER  (Cloudflare Rate Limiting API)
+#   - [limits]      (extended CPU time)
 
-# wrangler compiles TypeScript natively — no separate build step needed
+[env.production]
+name = "flash-agent-stack-prod"
+
+[env.production.ai]
+binding = "AI"
+
+[[env.production.kv_namespaces]]
+binding = "TENANT_KV"
+id = "19a0548d0cee4158840b3047e2f1c455"
+
+[[env.production.unsafe.bindings]]
+name = "RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 200, period = 60 }
+
+[env.production.limits]
+cpu_ms = 30000
+
+[env.production.vars]
+FREE_TIER_DAILY_LIMIT = "100"
+WORKER_BASE_URL = "https://flash-agent-stack.flash-agent-backend.workers.dev"

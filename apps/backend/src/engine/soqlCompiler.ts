@@ -276,8 +276,10 @@ function buildWhereClause(
   const parts: string[] = [];
 
   for (const cond of conditions) {
-    // 1. Validate field exists in schema
-    if (validFields.size > 0 && !validFields.has(cond.field)) {
+    // 1. Validate field exists in schema; cross-object dot-notation fields bypass this
+    //    (e.g. "Account.Name") — Salesforce validates them at runtime.
+    const isCrossObjectField = cond.field.includes('.');
+    if (!isCrossObjectField && validFields.size > 0 && !validFields.has(cond.field)) {
       warnings.push(`WHERE field "${cond.field}" not in schema — condition skipped`);
       continue;
     }
