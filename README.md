@@ -105,6 +105,66 @@ cd apps/extension && npm install && npm run build
 
 ---
 
+### 4. FlashBar AI — Natural-Language SOQL Engine & JEV Feature Endpoints
+
+The same Cloudflare Worker (`apps/backend/src/cf-worker.ts`) also runs the full backend
+for **[FlashBar AI](https://github.com/furuCRM-Inc/furu-agent-bar)**, a `Cmd+K` command
+palette for Salesforce Lightning Experience. This is the largest single surface in the
+Worker — everything below ships from this repo, deployed with the same `npm run deploy:cf`
+above.
+
+**Natural-language → SOQL pipeline**
+- `POST /v1/agent-action` — the main entry point. Classifies free-text input (English or
+  Japanese) into an intent — `NAVIGATE`, `SOQL_SEARCH`, `UPDATE_RECORD`, `PREFILL`,
+  `EXTRACT`, `GUIDE_CREATE`, `EXPLAIN_FIELD`, `EXPLAIN_FORMULA`, `DISAMBIGUATE`, or
+  `CLARIFY` — and, for searches, compiles it straight into a validated SOQL filter
+  (field/operator/value conditions, `ORDER BY`, date-literal detection, cross-object
+  dot-notation fields like `Account.Name`). Runs a 3-tier confidence gate:
+  ≥85% executes directly, 50–84% returns "Did you mean?" candidates, <50% falls back to
+  a SOSL keyword search rather than guessing.
+- `POST /v1/jev-classify` — lower-level Jev template/low-confidence classification used
+  internally by the agent-action pipeline.
+- Built-in semantic layers: Case status (`IsClosed` vs. `CreatedDate`, "クローズ済み" /
+  "closed cases"), date-literal detection (`THIS_MONTH`, `来月`, `LAST_N_DAYS:N`, ...),
+  ranking queries ("top 10 highest Amount"), and relationship/parent-child filter scoping.
+
+**JEV feature endpoints** (Score / Choice / Noul — the AI judges, Salesforce Apex always
+executes the actual DML under `WITH USER_MODE`)
+- `POST /api/jev/triage` — Smart Case Triage: scores urgency/churn risk, recommends a
+  support queue, flags cases needing immediate escalation.
+- `POST /api/jev/qualify-batch` — Lead Qualify & Assign: ICP-scores a batch of Leads
+  (HOT/WARM/COLD + reasoning) for round-robin assignment. Called in small parallel
+  chunks rather than one big batch, since one large LLM prompt scales badly and turns
+  into an all-or-nothing timeout.
+- `POST /v1/translate-rule` — turns a raw Apex validation-rule error into a plain-English
+  (or Japanese) rule for FlashBar's self-learning knowledge base, pending admin approval.
+- `POST /v1/explain-formula` — plain-language explanation of a formula field.
+- `POST /v1/jp-address` — Japanese postal-code lookup (7-digit zip → prefecture/city/town)
+  via Zipcloud, used for address auto-fill and OCR postal-code enhancement.
+- `POST /v1/csv-map` — AI-assisted column mapping for CSV bulk import.
+- `POST /v1/dashboard-builder` — natural-language → Report/Dashboard scaffolding, gated
+  behind a connected Claude API key (`/claude/save-key`, `/claude/status`).
+
+All of the above honor a `userLanguage` field (`en`/`ja`) and return `reasoning`/label
+text in that language — including a repetition-penalty tune on the LLM call, since
+low-temperature decoding on the quantized model this runs on (`llama-3.1-8b-instruct-fp8`)
+can otherwise spiral into a repeated-phrase loop on non-English output.
+
+**KV cache seeding** (called once per session by the LWC, not user-facing)
+`/v1/schema-seed`, `/v1/sobjects-seed`, `/v1/synonyms-seed`, `/v1/field-types-seed`,
+`/v1/child-rels-seed`, `/v1/grammar-rules-seed`, `/v1/datacloud-catalog-seed` — push the
+org's schema, custom-object catalog, and label synonyms into Cloudflare KV so field
+validation and object-name resolution are sub-millisecond instead of round-tripping to
+Salesforce on every keystroke.
+
+See `furu-agent-bar`'s own README for the Salesforce-side install, permission sets, and
+UI. FlashBar's unlocked package doesn't include Agentforce Vision OCR (needs
+`ConnectApi.EinsteinLLM`, which isn't grantable in the org Salesforce uses to validate
+package versions) — the Worker-side callout for it isn't in this list because the
+Salesforce Apex class that would call it ships outside the package instead.
+
+---
+
 ## Deploy to Cloudflare Workers in 30 seconds
 
 ```bash
@@ -236,31 +296,33 @@ Only change the Named Credential endpoint — no code changes:
 
 ## Pricing & Support
 
-### Community Edition — Free Forever
+FlashAgent Stack is 100% open source (MIT) and self-hosted — you deploy and run
+every piece of it yourself (Cloudflare Workers, Vercel, your own Salesforce org),
+so there's no infrastructure furuCRM operates on your behalf and nothing to pay
+for the software itself.
 
 | What | Details |
 |---|---|
-| License | MIT |
+| License | MIT — free forever, no feature gating |
 | Core engine (Noul/Choice/Score) | ✅ Included |
-| Cloudflare Workers / Vercel deploy | ✅ Included |
+| Cloudflare Workers / Vercel / local deploy | ✅ Included |
 | Salesforce LWC (Cases, Leads) | ✅ Included |
 | Chrome Extension | ✅ Included |
-| Support | GitHub Issues (community) |
+| Community support | GitHub Issues |
 
-### Enterprise Support — For Production Salesforce Orgs
+### Paid engagements — Work, not a license
 
-| What | Details |
+Since you own the deployment, there's nothing to sell you *access* to. What we
+do offer as paid work:
+
+| Engagement | What it covers |
 |---|---|
-| Dedicated Slack channel | ✅ |
-| SLA: 99.9% uptime guarantee | ✅ |
-| Custom LWC (CPQ, FSC, Health Cloud) | ✅ |
-| HIPAA / GDPR compliance package | ✅ |
-| Custom model fine-tuning | ✅ |
-| Managed Cloudflare infrastructure | ✅ |
-| Starting price | ¥150,000/month |
+| Custom model fine-tuning | Tuning a model for your domain's Noul/Choice/Score accuracy |
+| Feature / LWC extension | New components or JEV endpoints built for your workflow (in the style of `flashAgentDemo`/`webMcpBridge`, or FlashBar's own Case Triage / Lead Qualify endpoints) |
+| Salesforce integration support | Hands-on help wiring this into a production org — Named Credentials, permission sets, package deployment |
 
-**Need Enterprise SLA or custom Salesforce integration?**  
-→ Email **support@furucrm.com** or visit **[furucrm.com](https://furucrm.com)**
+**Need custom model work, a feature extension, or integration support?**  
+→ Email [contact@furucrm.com](mailto:contact@furucrm.com) or visit **[furucrm.com](https://furucrm.com)**
 
 ---
 

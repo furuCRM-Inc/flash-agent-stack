@@ -90,6 +90,14 @@ interface Env {
 
 const MODEL = '@cf/meta/llama-3.1-8b-instruct-fp8';
 
+// Used only for endpoints generating longer free-text reasoning (Case Triage,
+// Lead Qualify) — the 8B model's Japanese output can degrade into a repeated-
+// phrase loop or garbled mixed-script text. The 70B "fast" variant has much
+// stronger multilingual generation at the cost of higher latency/neuron usage,
+// which is an acceptable trade here since these aren't the sub-second NLU/SOQL
+// classification paths (agent-action, jev-classify, etc. stay on MODEL).
+const REASONING_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+
 const app = new Hono<{ Bindings: Env }>();
 
 app.use('*', cors());
@@ -2027,6 +2035,7 @@ interface CaseTriageRequest {
   subject?:       string;
   description?:   string;
   accountSlaTier?: string;
+  userLanguage?:  string;
 }
 
 app.post('/api/jev/triage', async (c) => {
@@ -2034,7 +2043,10 @@ app.post('/api/jev/triage', async (c) => {
   try { body = await c.req.json() as CaseTriageRequest; }
   catch { return c.json({ error: 'Invalid JSON' }, 400); }
 
-  const { subject = '', description = '', accountSlaTier = 'Standard' } = body;
+  const { subject = '', description = '', accountSlaTier = 'Standard', userLanguage = 'en' } = body;
+  const languageLine = userLanguage.startsWith('ja')
+    ? 'Write "reasoning" and "recommendedQueueLabel" in Japanese (日本語).'
+    : 'Write "reasoning" and "recommendedQueueLabel" in English.';
 
   const system = `You are a CRM support triage AI. Given a Salesforce Case, evaluate urgency and assign to the best support queue.
 Return ONLY valid JSON (no markdown, no code fences) matching exactly this structure:
@@ -2056,20 +2068,26 @@ Return ONLY valid JSON (no markdown, no code fences) matching exactly this struc
   }
 }
 SLA tiers: Gold (highest priority), Silver, Bronze, Standard (lowest).
-Escalation = true when urgency >= 0.85 AND SLA is Gold or Silver.`;
+Escalation = true when urgency >= 0.85 AND SLA is Gold or Silver.
+${languageLine}`;
 
   const prompt = `Case Subject: ${subject}
 Description: ${description}
 Account SLA Tier: ${accountSlaTier}`;
 
   try {
-    const raw = await c.env.AI.run(MODEL, {
+    const raw = await c.env.AI.run(REASONING_MODEL, {
       messages: [
         { role: 'system', content: system },
         { role: 'user',   content: prompt },
       ],
       max_tokens: 512,
-      temperature: 0.1,
+      temperature: 0.3,
+      // llama-3.1-8b-instruct-fp8 (quantized, weaker non-English generation) would
+      // occasionally spiral into a repeated-phrase loop for Japanese reasoning text
+      // at temperature 0.1 (near-greedy decoding compounds the effect). Penalizing
+      // repeated tokens fixes it without meaningfully hurting scoring consistency.
+      repetition_penalty: 1.3,
     });
     const out  = raw as { response?: unknown; choices?: Array<{ message?: { content?: string } }> };
     const text = out.choices?.[0]?.message?.content ?? (typeof out.response === 'string' ? out.response : '{}');
@@ -2096,6 +2114,7 @@ interface LeadQualifyRequest {
     leadSource?: string;
     description?: string;
   }>;
+  userLanguage?: string;
 }
 
 interface LeadScore {
@@ -2110,10 +2129,13 @@ app.post('/api/jev/qualify-batch', async (c) => {
   try { body = await c.req.json() as LeadQualifyRequest; }
   catch { return c.json({ error: 'Invalid JSON' }, 400); }
 
-  const { leads } = body;
+  const { leads, userLanguage = 'en' } = body;
   if (!Array.isArray(leads) || leads.length === 0) {
     return c.json({ error: 'leads array is required' }, 400);
   }
+  const languageLine = userLanguage.startsWith('ja')
+    ? 'Write each "reasoning" in Japanese (日本語).'
+    : 'Write each "reasoning" in English.';
 
   const system = `You are a B2B lead qualification AI. Score each lead for Ideal Customer Profile (ICP) fit.
 Return ONLY valid JSON (no markdown, no code fences):
@@ -2132,20 +2154,23 @@ Scoring guide:
 - HOT (0.75–1.0): Strong fit — decision-maker title, revenue >10M, SMB–Mid-market, relevant industry
 - WARM (0.50–0.74): Moderate fit — some signals present
 - COLD (0.0–0.49): Weak fit — missing key signals
-Use annualRevenue, numberOfEmployees, title, industry, leadSource as signals.`;
+Use annualRevenue, numberOfEmployees, title, industry, leadSource as signals.
+${languageLine}`;
 
   const leadsText = leads.map((l, i) =>
     `Lead ${i + 1} (id: ${l.leadId}): ${l.firstName ?? ''} ${l.lastName ?? ''}, ${l.title ?? 'Unknown title'}, ${l.company ?? ''}, Revenue: ${l.annualRevenue ?? 'unknown'}, Employees: ${l.numberOfEmployees ?? 'unknown'}, Industry: ${l.industry ?? 'unknown'}, Source: ${l.leadSource ?? 'unknown'}`
   ).join('\n');
 
   try {
-    const raw = await c.env.AI.run(MODEL, {
+    const raw = await c.env.AI.run(REASONING_MODEL, {
       messages: [
         { role: 'system', content: system },
         { role: 'user',   content: `Score these leads:\n${leadsText}` },
       ],
       max_tokens: 1024,
-      temperature: 0.1,
+      temperature: 0.3,
+      // See the /api/jev/triage comment above — same repetition-loop fix.
+      repetition_penalty: 1.3,
     });
     const out  = raw as { response?: unknown; choices?: Array<{ message?: { content?: string } }> };
     const text = out.choices?.[0]?.message?.content ?? (typeof out.response === 'string' ? out.response : '{}');
