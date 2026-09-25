@@ -162,28 +162,45 @@ export function extractDateLiteral(text: string): string | null {
   return null;
 }
 
-// Extracts a numeric amount from free text, handling Japanese units (万, 億).
-// Returns the numeric value or null.
+// Extracts a numeric amount from free text, handling Japanese units (万, 億)
+// — including compound numerals like "1億5000万" — and English magnitude
+// words (million, k, $ / USD / JPY). Returns the numeric value or null.
 export function extractAmountValue(text: string): number | null {
   // Normalize full-width digits
   const normalized = text.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFF10 + 0x30));
 
-  // Japanese amount patterns: "1000万", "5億", "1,000万以上"
-  const jaMatch = normalized.match(/(\d[\d,]*(?:\.\d+)?)\s*(?:千万|億)/);
-  if (jaMatch) {
-    const raw = parseFloat(jaMatch[1].replace(/,/g, ''));
-    if (jaMatch[0].includes('億')) return raw * 1_000_000_00;
-    if (jaMatch[0].includes('千万')) return raw * 10_000_000;
+  // Compound Japanese numerals: "1億5000万", "2億3000万5000円" — sum contiguous
+  // 億/千万/万 components left to right instead of returning only the first
+  // match. A bare "1億5000万" used to match only "1億" and silently drop the
+  // "5000万" remainder (100,000,000 instead of the correct 150,000,000).
+  const unitRe = /(\d[\d,]*(?:\.\d+)?)\s*(億|千万|万)/g;
+  let compoundSum: number | null = null;
+  let lastEnd = -1;
+  let m: RegExpExecArray | null;
+  while ((m = unitRe.exec(normalized)) !== null) {
+    // Stop accumulating once a gap appears — an unrelated later number/unit in
+    // the same sentence shouldn't be folded into an earlier, already-complete
+    // amount (e.g. two unrelated 万-denominated figures in one long sentence).
+    if (compoundSum !== null && m.index - lastEnd > 2) break;
+    const raw  = parseFloat(m[1].replace(/,/g, ''));
+    const mult = m[2] === '億' ? 100_000_000 : m[2] === '千万' ? 10_000_000 : 10_000;
+    compoundSum = (compoundSum ?? 0) + raw * mult;
+    lastEnd = unitRe.lastIndex;
   }
+  if (compoundSum !== null) return compoundSum;
 
-  const manMatch = normalized.match(/(\d[\d,]*(?:\.\d+)?)\s*万/);
-  if (manMatch) return parseFloat(manMatch[1].replace(/,/g, '')) * 10_000;
-
-  const okuMatch = normalized.match(/(\d[\d,]*(?:\.\d+)?)\s*億/);
-  if (okuMatch) return parseFloat(okuMatch[1].replace(/,/g, '')) * 100_000_000;
+  // English magnitude words — previously unhandled entirely, so "$500,000",
+  // "3 million yen", "50k" fell through to the plain-number fallback below,
+  // which only works by accident when the digits alone happen to be ≥1000
+  // (and silently ignores "million"/"k" scaling, e.g. "3 million" → 3, not
+  // 3,000,000, unless the literal digit string was already large enough).
+  const millionMatch = normalized.match(/[$￥]?\s*(\d[\d,]*(?:\.\d+)?)\s*(?:million|m)\b/i);
+  if (millionMatch) return parseFloat(millionMatch[1].replace(/,/g, '')) * 1_000_000;
+  const kMatch = normalized.match(/[$￥]?\s*(\d[\d,]*(?:\.\d+)?)\s*k\b/i);
+  if (kMatch) return parseFloat(kMatch[1].replace(/,/g, '')) * 1_000;
 
   // Plain number with threshold word
-  const plainMatch = normalized.match(/(\d[\d,]{2,})(?:\s*(?:円|ドル|USD|JPY))?/);
+  const plainMatch = normalized.match(/[$￥]?\s*(\d[\d,]{2,})(?:\s*(?:円|ドル|USD|JPY))?/);
   if (plainMatch) {
     const v = parseFloat(plainMatch[1].replace(/,/g, ''));
     if (v >= 1000) return v;  // Skip small numbers that are likely not amounts
@@ -192,8 +209,9 @@ export function extractAmountValue(text: string): number | null {
   return null;
 }
 
-// Detects threshold operator from surrounding text (以上/以下/超/未満/above/below/over/under).
-export function extractAmountOp(text: string): 'gte' | 'lte' | 'gt' | 'lt' {
+// Detects threshold operator from surrounding text (以上/以下/超/未満/above/below/over/under/ちょうど/exactly).
+export function extractAmountOp(text: string): 'eq' | 'gte' | 'lte' | 'gt' | 'lt' {
+  if (/(?:ちょうど|exactly|equal\s+to)/i.test(text)) return 'eq';
   if (/(?:以上|超過?|above|over|more\s+than|>=)/i.test(text)) return 'gte';
   if (/(?:以下|未満|below|under|less\s+than|<=)/i.test(text)) return 'lte';
   if (/(?:超|より多い|>(?!=))/i.test(text)) return 'gt';
@@ -201,30 +219,62 @@ export function extractAmountOp(text: string): 'gte' | 'lte' | 'gt' | 'lt' {
   return 'gte';  // Default: "N以上" (over N)
 }
 
-// Detects LIMIT value from input text.
+// Detects LIMIT value from input text. Recognizes an explicit "all"/"every"/
+// "すべて"/"全て" as a request for the max practical page size — previously
+// unrecognized, so "show all 200 cases" silently returned the 20-record
+// default with no indication anything was capped. Explicit numbers above the
+// UI's practical single-page size (50) are still clamped, but to a higher,
+// less surprising ceiling than the previous silent full reset to 20.
+const ALL_RECORDS_LIMIT = 200;
+const MAX_PRACTICAL_LIMIT = 100;
 export function extractLimit(text: string): number {
+  if (/\b(?:all|every)\b|すべて|全て/i.test(text)) return ALL_RECORDS_LIMIT;
   const m = text.match(/(\d+)\s*(?:件|records?|rows?)/i);
   if (m) {
     const n = parseInt(m[1], 10);
-    if (n >= 1 && n <= 50) return n;
+    if (n >= 1) return Math.min(n, MAX_PRACTICAL_LIMIT);
   }
   return 20;
 }
 
-// Detects "X取引先の商談" patterns — user wants Opportunities for a named Account.
-// "X取引先の全ての商談を見せて" → sObject=Opportunity, Account.Name LIKE '%X%'
+// Escapes SOQL LIKE wildcard characters (% and _) in a value that will be
+// interpolated into a hand-built '%...%' pattern, so a company literally named
+// with one of those characters (e.g. "100%_Growth Inc") doesn't get
+// interpreted as part of the wildcard syntax.
+function escapeLikeWildcards(value: string): string {
+  return value.replace(/[%_]/g, ch => '\\' + ch);
+}
+
+// Detects "X取引先の商談" / "X's opportunities" patterns — user wants
+// Opportunities for a named Account. "X取引先の全ての商談を見せて" →
+// sObject=Opportunity, Account.Name LIKE '%X%'
 function extractParentAccountContext(text: string): { accountName: string } | null {
   // "Dickenson plc取引先の(全ての)?商談/案件/売上/受注"
   const m1 = text.match(/(.+?)取引先の(?:全て|すべて)?の?(?:商談|案件|売上|受注|オポチュニティ)/);
   if (m1) {
     const name = m1[1].trim();
-    if (name.length >= 2) return { accountName: name };
+    if (name.length >= 2) return { accountName: escapeLikeWildcards(name) };
   }
   // "Dickenson plcという取引先の商談"
   const m2 = text.match(/(.+?)という取引先の(?:全て|すべて)?の?(?:商談|案件)/);
   if (m2) {
     const name = m2[1].trim();
-    if (name.length >= 2) return { accountName: name };
+    if (name.length >= 2) return { accountName: escapeLikeWildcards(name) };
+  }
+  // English equivalents — previously unimplemented, so "Acme Corp's
+  // opportunities" / "opportunities for Acme Corp" never resolved a parent
+  // filter at all despite the Japanese phrasing working fine.
+  // "Acme Corp's opportunities/deals"
+  const m3 = text.match(/(.+?)(?:'s|’s)\s+(?:opportunit(?:y|ies)|deals?)/i);
+  if (m3) {
+    const name = m3[1].trim();
+    if (name.length >= 2) return { accountName: escapeLikeWildcards(name) };
+  }
+  // "opportunities/deals for/at/from/related to Acme Corp"
+  const m4 = text.match(/(?:opportunit(?:y|ies)|deals?)\s+(?:for|at|from|related\s+to)\s+(.+?)(?:\s*$|\.$)/i);
+  if (m4) {
+    const name = m4[1].trim();
+    if (name.length >= 2) return { accountName: escapeLikeWildcards(name) };
   }
   return null;
 }
@@ -246,11 +296,35 @@ function extractStageFilter(text: string): SoqlCondition | null {
 // Detects "closed/open" status filters for Case.
 // Uses IsClosed (boolean formula field) so it works regardless of custom Status picklist values.
 function extractCaseStatusFilter(text: string): SoqlCondition | null {
+  // Negated-closed phrasing must be checked FIRST — "クローズしていない"
+  // contains the bare substring "クローズ", which the closed-branch regex
+  // below matches on its own (its 済? is optional, so it doesn't require —
+  // or forbid — anything after "クローズ"), silently inverting the user's
+  // actual (negative) intent to IsClosed = true instead of false.
+  if (/クローズ(?:して)?(?:い)?ない|not\s+closed|isn'?t\s+closed/i.test(text)) {
+    return { field: 'IsClosed', op: 'eq', value: false };
+  }
   if (/\bclosed?\b|クローズ済?|解決済?|完了したケース?/.test(text)) {
     return { field: 'IsClosed', op: 'eq', value: true };
   }
   if (/\bopen\b|未解決|未クローズ|オープンなケース?/.test(text)) {
     return { field: 'IsClosed', op: 'eq', value: false };
+  }
+  return null;
+}
+
+// Detects "converted/unconverted" status filters for Lead.
+// Uses IsConverted, a standard boolean field — same rationale as Case.IsClosed
+// (org-agnostic, no dependency on custom Status picklist values). Previously
+// unimplemented entirely: Lead had the same boolean-semantics need as Case but
+// no equivalent function, so "converted leads" silently fell through to the
+// generic CreatedDate >= LAST_N_DAYS:30 recency default.
+function extractLeadStatusFilter(text: string): SoqlCondition | null {
+  if (/未変換|変換されていない|not\s+converted|unconverted/i.test(text)) {
+    return { field: 'IsConverted', op: 'eq', value: false };
+  }
+  if (/変換済み?|converted/i.test(text)) {
+    return { field: 'IsConverted', op: 'eq', value: true };
   }
   return null;
 }
@@ -325,7 +399,12 @@ export function buildSoqlFilterFromJev(
       let dateField: string;
       if (sObject === 'Opportunity') {
         const lower = userInput.toLowerCase();
-        const isCreatedIntent = /作成|created|新規|added|new.*creat|creat.*new/.test(lower);
+        // \bnew\b alone used to require co-occurrence with "creat*" ("new.*creat" /
+        // "creat.*new") — "new deals this month" (no "creat*" anywhere) fell through
+        // to CloseDate, disagreeing with the Japanese "新規" branch, which matches on
+        // its own. \bnew\b trades a rare false-positive (e.g. "deals in New York")
+        // for covering the much more common "new X this month" phrasing.
+        const isCreatedIntent = /作成|新規|追加|created|added|\bnew\b/.test(lower);
         dateField = isCreatedIntent ? 'CreatedDate' : 'CloseDate';
       } else {
         dateField = 'CreatedDate';
@@ -373,11 +452,17 @@ export function buildSoqlFilterFromJev(
     }
   }
 
-  // ── Status filter (Case only) ──────────────────────────────────────────────
+  // ── Status filter (Case / Lead) ────────────────────────────────────────────
   if (sObject === 'Case') {
     const caseStatus = extractCaseStatusFilter(userInput);
     if (caseStatus && (validFields.size === 0 || validFields.has(caseStatus.field))) {
       conditions.push(caseStatus);
+    }
+  }
+  if (sObject === 'Lead') {
+    const leadStatus = extractLeadStatusFilter(userInput);
+    if (leadStatus && (validFields.size === 0 || validFields.has(leadStatus.field))) {
+      conditions.push(leadStatus);
     }
   }
 
@@ -436,23 +521,40 @@ export const STANDARD_SYNONYM_MAP: Record<string, string> = {
   '行動': 'Task', 'タスク': 'Task', '予定': 'Task', 'アクション': 'Task',
 };
 
-// Common Japanese field name → Salesforce API name mappings for RECORD_UPDATE.
+// Common field name synonyms → Salesforce API name mappings for RECORD_UPDATE.
+// English entries were previously entirely absent — extractSimpleUpdate() only
+// had Japanese sentence patterns below, so any English update phrasing
+// ("change the amount to 500") returned null unconditionally regardless of
+// this map. Kept in the same map since lookup is just `map[fieldRaw]`,
+// language-agnostic once a field token has been extracted.
 export const FIELD_SYNONYM_MAP: Record<string, string> = {
   'フェーズ': 'StageName', 'ステージ': 'StageName', '商談フェーズ': 'StageName',
+  'stage': 'StageName', 'phase': 'StageName',
   '金額': 'Amount', '予算': 'Amount', '受注金額': 'Amount', '案件金額': 'Amount',
+  'amount': 'Amount', 'budget': 'Amount', 'value': 'Amount',
   'クローズ日': 'CloseDate', '完了日': 'CloseDate', '契約予定日': 'CloseDate', '完了予定日': 'CloseDate', '完了予定': 'CloseDate',
+  'close date': 'CloseDate', 'closing date': 'CloseDate',
   '次のステップ': 'NextStep', 'ネクストステップ': 'NextStep',
+  'next step': 'NextStep',
   '説明': 'Description', '備考': 'Description',
+  'description': 'Description', 'notes': 'Description',
   '担当者': 'OwnerId',
+  'owner': 'OwnerId',
   '優先度': 'Priority',
+  'priority': 'Priority',
   'ステータス': 'Status',
+  'status': 'Status',
   '電話': 'Phone',
+  'phone': 'Phone',
   'メール': 'Email',
+  'email': 'Email',
   'ウェブサイト': 'Website',
+  'website': 'Website',
 };
 
 // ── Simple RECORD_UPDATE extractor ────────────────────────────────────────────
 // Handles Japanese patterns: "XのFieldをValueに変更/設定/更新"
+// and English patterns: "change/set/update [X's] Field to Value"
 // Returns { fieldApiName: parsedValue } or null if pattern not matched.
 
 export interface SimpleUpdateResult {
@@ -477,7 +579,18 @@ export function extractSimpleUpdate(
     ? userInput.match(/^(.+?)\s*を\s*(.+?)\s*(?:に変更|に設定|に更新|に修正|として保存|にして|に直して|にする)/i)
     : null;
 
-  if (!jaMatch && !jaSimple) return null;
+  // English: "change/set/update [Record]'s Field to Value"
+  // e.g. "change Acme Corp's amount to 5000000"
+  const enMatch = (!jaMatch && !jaSimple)
+    ? userInput.match(/^(?:change|set|update)\s+(.+?)(?:'s|’s)\s+(.+?)\s+to\s+(.+?)\.?$/i)
+    : null;
+  // English, no record name: "change/set/update [the] Field to Value"
+  // e.g. "change the amount to 5000000", "set stage to Closed Won"
+  const enSimple = (!jaMatch && !jaSimple && !enMatch)
+    ? userInput.match(/^(?:change|set|update)\s+(?:the\s+)?(.+?)\s+to\s+(.+?)\.?$/i)
+    : null;
+
+  if (!jaMatch && !jaSimple && !enMatch && !enSimple) return null;
 
   let searchName: string | null = null;
   let fieldRaw: string;
@@ -494,12 +607,26 @@ export function extractSimpleUpdate(
       fieldRaw = candidate;  // was actually the field name
       valueRaw = jaMatch[2].trim();
     }
+  } else if (enMatch) {
+    const candidate = enMatch[1].trim();
+    fieldRaw = enMatch[2].trim();
+    valueRaw = enMatch[3].trim();
+    // Same record-name-vs-field-name disambiguation as the Japanese path.
+    if (!FIELD_SYNONYM_MAP[candidate.toLowerCase()] && !validFields.has(candidate)) {
+      searchName = candidate;
+    } else {
+      fieldRaw = candidate;
+      valueRaw = enMatch[2].trim();
+    }
+  } else if (jaSimple) {
+    fieldRaw = jaSimple[1].trim();
+    valueRaw = jaSimple[2].trim();
   } else {
-    fieldRaw = jaSimple![1].trim();
-    valueRaw = jaSimple![2].trim();
+    fieldRaw = enSimple![1].trim();
+    valueRaw = enSimple![2].trim();
   }
 
-  const apiField = FIELD_SYNONYM_MAP[fieldRaw] ?? fieldRaw;
+  const apiField = FIELD_SYNONYM_MAP[fieldRaw] ?? FIELD_SYNONYM_MAP[fieldRaw.toLowerCase()] ?? fieldRaw;
 
   // If we have a valid field list, reject unknown fields
   if (validFields.size > 0 && !validFields.has(apiField)) return null;

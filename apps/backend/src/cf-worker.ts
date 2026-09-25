@@ -1015,8 +1015,18 @@ export function tryFastRoute(req: AgentActionRequest): AgentActionResponse | nul
 
   // ── SOQL_SEARCH: "show/list/how many [closed|open] cases" ─────────────────
   // Handles status-based Case queries without LLM overhead.
+  //
+  // Only closed/open are matched here — both map cleanly to the IsClosed
+  // formula field regardless of the org's custom Status picklist values.
+  // "escalated"/"pending" have no such org-agnostic boolean to map to (there's
+  // no standard Case.Escalated field, and Status values are org-specific), so
+  // they intentionally fall through to full LLM classification instead of a
+  // deterministic fast-route. A previous version of this regex captured them
+  // here too, which silently mapped BOTH to IsClosed = false (i.e. "escalated
+  // cases" actually returned all open cases, mislabeled) — confirmed wrong,
+  // not just unimplemented.
   const caseStatusMatch = lower.match(
-    /^(?:show(?:\s+me)?|list(?:\s+all)?|how\s+many)\s+(closed|open|escalated|pending)\s+(?:cases?|tickets?)/i
+    /^(?:show(?:\s+me)?|list(?:\s+all)?|how\s+many)\s+(closed|open)\s+(?:cases?|tickets?)/i
   );
   if (caseStatusMatch) {
     const statusToken = caseStatusMatch[1].toLowerCase();
