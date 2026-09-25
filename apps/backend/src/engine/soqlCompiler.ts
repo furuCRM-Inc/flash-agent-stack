@@ -329,7 +329,12 @@ function resolveOrderBy(
 
 function resolveLimit(limit: number | undefined, grammar: GrammarRules): number {
   const n = limit ?? grammar.soql_rules.default_limit;
-  return Math.min(Math.max(1, n), grammar.soql_rules.max_limit);
+  // A non-positive limit (e.g. a negative number from malformed input, or an
+  // explicit "-5") is nonsensical as a row count — previously this clamped to
+  // 1, silently returning almost nothing instead of falling back to the
+  // grammar's default page size.
+  const safe = n > 0 ? n : grammar.soql_rules.default_limit;
+  return Math.min(safe, grammar.soql_rules.max_limit);
 }
 
 // ── SOSL builder ──────────────────────────────────────────────────────────────

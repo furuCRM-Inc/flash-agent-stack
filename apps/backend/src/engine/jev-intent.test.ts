@@ -5,6 +5,7 @@ import {
   extractLimit,
   extractDateLiteral,
   extractSimpleUpdate,
+  extractNullCheckFilter,
   buildSoqlFilterFromJev,
   FIELD_SYNONYM_MAP,
   type JevAnswerSet,
@@ -268,5 +269,104 @@ describe('FIELD_SYNONYM_MAP — English entries exist', () => {
     expect(FIELD_SYNONYM_MAP['amount']).toBe('Amount');
     expect(FIELD_SYNONYM_MAP['stage']).toBe('StageName');
     expect(FIELD_SYNONYM_MAP['owner']).toBe('OwnerId');
+  });
+});
+
+describe('extractAmountValue — full-width and comma-separated numbers', () => {
+  it('parses a full-width compound amount ("１００万")', () => {
+    expect(extractAmountValue('１００万円の商談')).toBe(1_000_000);
+  });
+
+  it('parses a full-width digit + comma amount ("１，０００，０００")', () => {
+    expect(extractAmountValue('１，０００，０００円の商談')).toBe(1_000_000);
+  });
+
+  it('parses a plain comma-separated number ("100,000")', () => {
+    expect(extractAmountValue('deals worth 100,000 or more')).toBe(100_000);
+  });
+
+  it('parses a $-prefixed comma number combined with a magnitude word ("$1,500,000")', () => {
+    expect(extractAmountValue('opportunities over $1,500,000')).toBe(1_500_000);
+  });
+
+  it('parses a comma number combined with 万 ("5,000万")', () => {
+    expect(extractAmountValue('5,000万円の商談')).toBe(50_000_000);
+  });
+});
+
+describe('extractNullCheckFilter — null/blank value detection (previously unimplemented)', () => {
+  it('"no phone number" resolves Phone IS NULL', () => {
+    const cond = extractNullCheckFilter('leads with no phone number', new Set());
+    expect(cond).toEqual({ field: 'Phone', op: 'is_null' });
+  });
+
+  it('"accounts without a website" resolves Website IS NULL', () => {
+    const cond = extractNullCheckFilter('accounts without a website', new Set());
+    expect(cond).toEqual({ field: 'Website', op: 'is_null' });
+  });
+
+  it('"missing email" resolves Email IS NULL', () => {
+    const cond = extractNullCheckFilter('contacts missing email', new Set());
+    expect(cond).toEqual({ field: 'Email', op: 'is_null' });
+  });
+
+  it('"電話番号が未設定の取引先" resolves Phone IS NULL', () => {
+    const cond = extractNullCheckFilter('電話番号が未設定の取引先', new Set());
+    expect(cond).toEqual({ field: 'Phone', op: 'is_null' });
+  });
+
+  it('"ウェブサイトがない会社" resolves Website IS NULL', () => {
+    const cond = extractNullCheckFilter('ウェブサイトがない会社', new Set());
+    expect(cond).toEqual({ field: 'Website', op: 'is_null' });
+  });
+
+  it('returns null (no throw) when no recognizable field is mentioned', () => {
+    expect(extractNullCheckFilter('show me all accounts', new Set())).toBeNull();
+  });
+
+  it('respects validFields when a schema is provided', () => {
+    expect(extractNullCheckFilter('no phone number', new Set(['Website']))).toBeNull();
+    expect(extractNullCheckFilter('no phone number', new Set(['Phone']))).toEqual({ field: 'Phone', op: 'is_null' });
+  });
+
+  it('wires through buildSoqlFilterFromJev end-to-end', () => {
+    const result = buildSoqlFilterFromJev(
+      'leads with no phone number', null, highConfidenceAnswers('Lead'), new Set()
+    );
+    const cond = result?.filter.conditions.find(c => c.field === 'Phone');
+    expect(cond).toEqual({ field: 'Phone', op: 'is_null' });
+  });
+});
+
+describe('extractDateLiteral — relative date edge cases (previously unmapped)', () => {
+  it('resolves "yesterday"/"昨日" (previously entirely absent from the extraction layer)', () => {
+    expect(extractDateLiteral('yesterday')).toBe('YESTERDAY');
+    expect(extractDateLiteral('昨日')).toBe('YESTERDAY');
+  });
+
+  it('resolves "tomorrow"/"明日"', () => {
+    expect(extractDateLiteral('tomorrow')).toBe('TOMORROW');
+    expect(extractDateLiteral('明日')).toBe('TOMORROW');
+  });
+
+  it('resolves "一昨日" (the day before yesterday) to a 2-day window, does not throw', () => {
+    expect(() => extractDateLiteral('一昨日')).not.toThrow();
+    expect(extractDateLiteral('一昨日')).toBe('LAST_N_DAYS:2');
+  });
+
+  it('resolves "一昨々日" (three days ago) to a 3-day window, does not throw', () => {
+    expect(() => extractDateLiteral('一昨々日')).not.toThrow();
+    expect(extractDateLiteral('一昨々日')).toBe('LAST_N_DAYS:3');
+  });
+
+  it('a YESTERDAY/TOMORROW literal compiles safely through buildSoqlFilterFromJev without throwing', () => {
+    expect(() => buildSoqlFilterFromJev(
+      'cases created yesterday', null, highConfidenceAnswers('Case', { hasDate: 0.9 }), new Set()
+    )).not.toThrow();
+    const result = buildSoqlFilterFromJev(
+      'cases created yesterday', null, highConfidenceAnswers('Case', { hasDate: 0.9 }), new Set()
+    );
+    const dateCond = result?.filter.conditions.find(c => c.field === 'CreatedDate');
+    expect(dateCond?.value).toBe('YESTERDAY');
   });
 });

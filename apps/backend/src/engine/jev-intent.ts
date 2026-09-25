@@ -128,6 +128,18 @@ export interface SoqlFilter {
 // (no-\b) in separate alternations so Japanese keywords always match regardless of position.
 const DATE_KEYWORD_MAP: Array<{ pattern: RegExp; literal: string }> = [
   { pattern: /\btoday\b|本日|今日/i,                                  literal: 'TODAY'        },
+  // 一昨々日/一昨日 MUST be checked before the bare 昨日 pattern below — both
+  // contain "昨日" as a literal substring, and this array is first-match-wins,
+  // so checking 昨日 first would always classify "一昨日" as YESTERDAY.
+  // No standalone SOQL date literal exists for "the day before yesterday" or
+  // "3 days ago" as an exact single day — approximated as a LAST_N_DAYS:N
+  // range, consistent with how "過去2日"/"last 2 days" is already handled
+  // elsewhere in this map. Previously these returned null (safe — no
+  // exception — but silently unmapped) rather than throwing.
+  { pattern: /一昨々日/,                                              literal: 'LAST_N_DAYS:3' },
+  { pattern: /一昨日/,                                                literal: 'LAST_N_DAYS:2' },
+  { pattern: /\byesterday\b|昨日/i,                                   literal: 'YESTERDAY'    },
+  { pattern: /\btomorrow\b|明日/i,                                    literal: 'TOMORROW'     },
   { pattern: /\bthis[\s_-]?week\b|今週/i,                            literal: 'THIS_WEEK'    },
   { pattern: /\blast[\s_-]?week\b|先週/i,                            literal: 'LAST_WEEK'    },
   { pattern: /\bnext[\s_-]?week\b|来週|翌週/i,                       literal: 'NEXT_WEEK'    },
@@ -166,8 +178,12 @@ export function extractDateLiteral(text: string): string | null {
 // — including compound numerals like "1億5000万" — and English magnitude
 // words (million, k, $ / USD / JPY). Returns the numeric value or null.
 export function extractAmountValue(text: string): number | null {
-  // Normalize full-width digits
-  const normalized = text.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFF10 + 0x30));
+  // Normalize full-width digits and full-width comma separators (e.g.
+  // "１，０００，０００" — previously only the digits were normalized, so a
+  // full-width comma broke the \d[\d,]* match after the first digit group).
+  const normalized = text
+    .replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFF10 + 0x30))
+    .replace(/，/g, ',');
 
   // Compound Japanese numerals: "1億5000万", "2億3000万5000円" — sum contiguous
   // 億/千万/万 components left to right instead of returning only the first
@@ -329,6 +345,38 @@ function extractLeadStatusFilter(text: string): SoqlCondition | null {
   return null;
 }
 
+// Detects "no X" / "without X" / "Xが未設定/空欄/未入力/ない" null-check
+// phrasing and maps it to an IS NULL condition. The `is_null`/`not_null`
+// operators already exist in the compiler's type system, but until now
+// nothing in this module ever populated them from free text — "accounts
+// without a website" or "leads with no phone number" silently fell through
+// to the generic recency default instead of filtering on the field at all.
+export function extractNullCheckFilter(text: string, validFields: Set<string>): SoqlCondition | null {
+  // Japanese: "電話番号が未設定の取引先", "ウェブサイトがない会社"
+  const jaMatch = text.match(/(.+?)が(?:未設定|空欄|未入力|ない|無い)/);
+  // English: "no phone number", "without a website", "missing email"
+  const enMatch = text.match(/\b(?:no|without(?:\s+an?)?|missing)\s+([a-zA-Z][a-zA-Z\s]*)/i);
+
+  let fieldRaw: string | null = null;
+  if (jaMatch) {
+    fieldRaw = jaMatch[1].trim();
+  } else if (enMatch) {
+    // Strip trailing filler nouns that can follow the field mention, e.g.
+    // "no phone number leads" → "phone number", not "phone number leads".
+    fieldRaw = enMatch[1]
+      .replace(/\s+(?:leads?|accounts?|contacts?|cases?|opportunit(?:y|ies))\s*$/i, '')
+      .trim()
+      .toLowerCase();
+  }
+  if (!fieldRaw) return null;
+
+  const apiField = FIELD_SYNONYM_MAP[fieldRaw] ?? null;
+  if (!apiField) return null;
+  if (validFields.size > 0 && !validFields.has(apiField)) return null;
+
+  return { field: apiField, op: 'is_null' };
+}
+
 // ── Main SOQL filter builder ───────────────────────────────────────────────────
 
 export interface JevAnswerSet {
@@ -466,6 +514,12 @@ export function buildSoqlFilterFromJev(
     }
   }
 
+  // ── Null/blank field filter ("no phone number", "電話番号が未設定") ──────
+  const nullCheck = extractNullCheckFilter(userInput, validFields);
+  if (nullCheck) {
+    conditions.push(nullCheck);
+  }
+
   // ── Recency fallback (no explicit date or amount) ─────────────────────────
   // If no conditions were built, default to last 30 days
   if (conditions.length === 0) {
@@ -550,6 +604,8 @@ export const FIELD_SYNONYM_MAP: Record<string, string> = {
   'email': 'Email',
   'ウェブサイト': 'Website',
   'website': 'Website',
+  'phone number': 'Phone', '電話番号': 'Phone',
+  'email address': 'Email', 'メールアドレス': 'Email',
 };
 
 // ── Simple RECORD_UPDATE extractor ────────────────────────────────────────────
